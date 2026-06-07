@@ -55,7 +55,57 @@ Demiurge/
 
 ---
 
-### Milestone 1: Core Loop
+#### Gene System Design (finalized in Milestone 0)
+
+**Design philosophy: no free lunch.** Niches and counter-relationships can only emerge if genes carry costs. The trade-offs live in the genotype→phenotype mapping (`phenotype.py`), NOT in the genes themselves. Mutation only touches genes; balance tuning only touches the mapping.
+
+**Chromosomes (3, function-grouped, assignment is a config knob):**
+- **Chromosome 1 — Body:** `size`, `speed`, `sense_range`
+- **Chromosome 2 — Metabolism/Life:** `diet`, `repro_threshold`, `metabolism`
+- **Chromosome 3 — Brain/Personality:** `aggression`, `fear`, `exploration`
+
+Genome = list of chromosomes from day 1 (chromosome-aware structure), so future sexual recombination + linkage need no restructuring. v1 asexual reproduction copies the whole genome, so chromosome count is mechanically inert now — but `size`+`speed` are deliberately placed on the same chromosome (default **linked**); whether to break that linkage is a research question, adjustable via config in M3.
+
+**Genes (9 total, each record carries: value, valid range [min,max], per-gene mutation step):**
+
+| Gene | Range | Role |
+|---|---|---|
+| `size` | 0.1–1.0 | core of predation/anti-predation |
+| `speed` | 0.1–1.0 | expresses MAX speed cap |
+| `sense_range` | 0.1–1.0 | perception radius fed to the brain |
+| `diet` | 0.0–1.0 | single continuous axis: 0=pure herbivore, 1=pure carnivore |
+| `repro_threshold` | (mapped) | energy needed to split |
+| `metabolism` | 0.1–1.0 | resting energy drain (combined with size) |
+| `aggression` | 0.0–1.0 | tendency to chase smaller agents |
+| `fear` | 0.0–1.0 | how early to flee larger agents |
+| `exploration` | 0.0–1.0 | random walk vs energy-saving rest when no target |
+
+**Phenotype mapping (trade-offs, in `phenotype.py`):**
+- **Speed is not a constant.** `speed` gene → max-speed cap. Actual per-tick speed is chosen by the brain per state: moderate cruising while foraging, max speed only when fleeing. Energy cost grows **super-linearly with actual speed** (≈ speed², real-world metabolic analogy), so always-sprinting starves — populations evolve sensible cruising speeds.
+- **Size↔speed soft tendency, not hard rule.** `max_speed = f(speed_gene, size)`: larger body tends to lower the max-speed cap, but the `speed` gene still allows "big-yet-agile" individual variation. Not "big = always slow."
+- **Sense range costs energy.** Larger `sense_range` → wider view → higher resting drain.
+- **Metabolism = f(metabolism gene, size).** Both raise resting energy drain.
+- **Diet mapping may be non-linear.** Real-world inspired: carnivory yields more energy per successful meal (prey is energy-dense) but predation has a threshold (needs size advantage) and risk/miss cost; herbivory yields less but is stable and ubiquitous. Tune the curve in `phenotype.py`, never the gene.
+
+**Emergent "who eats whom" (no labels):** When A tries to eat B — (1) *can* it: `A.size` must exceed `B.size` by a config threshold; (2) *will/worth it*: driven by `A.diet` (carnivory motivation) and `A.aggression` (personality). Eating plants scales with `1 - diet`. Predation is never a rule — "wolf eats sheep" is the winning outcome of a (big + carnivorous + aggressive) gene combination under selection.
+
+**Species & color via emergence (not preset labels):** No fixed N species. Appearance is a visual read-out of functional genes, so visually similar ≈ genetically close, and offspring resemble parents:
+
+| Visual channel | Gene |
+|---|---|
+| Hue (red↔green) | `diet` |
+| Radius | `size` |
+| Shape (elongated↔round) | `speed` |
+| Edge spikes | `aggression` |
+| Outline halo | `sense_range` |
+
+Note: because appearance reads functional genes, convergent evolution can make unrelated lineages look alike (real phenomenon, e.g. shark vs dolphin). A neutral lineage marker (to distinguish kinship from convergence) is deferred to M3. "Species" as a mating-boundary mechanism also arrives with sexual reproduction in M3.
+
+**Diversity-maintenance prerequisites (built into world rules, not forced):** plants regenerate (can't be eaten to zero in one pass), predation has a threshold + miss cost, and the world has spatial structure (not a homogeneous soup). These let negative frequency-dependent selection (predator-prey oscillation) emerge. Convergence ("monopoly") remains a legitimate observable outcome.
+
+---
+
+## Milestone 1: Core Loop
 **Status:** Not started
 
 Get the full cycle running: **energy → move → eat → reproduce → mutate → die**
