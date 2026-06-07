@@ -22,10 +22,18 @@ python main.py
 5. Decision, gene, reproduction, and attribute systems must all be replaceable modules.
 6. Stub data recording interfaces from day one (don't implement, just leave clean hooks).
 7. Fixed random seed for reproducibility; update order must be deterministic.
-8. All tunable parameters in a single config file — never hardcoded.
-9. Use `pathlib` for all file paths; no platform-specific separators.
+8. RNG dependency injection — never use module-global `random` in the core; pass an RNG instance explicitly.
+9. Core must be testable headless (no pygame/graphics in the core — a benefit of law 1).
+10. All tunable parameters in a single config file — never hardcoded.
+11. Use `pathlib` for all file paths; no platform-specific separators.
+
+## File responsibilities (keep separate)
+- **PROJECT_GUIDE.md** — constitution: philosophy, constraints, iron laws. Stable.
+- **PLAN.md** — milestone roadmap + decision/progress log. Update as work progresses.
+- **README.md** — human-facing: what it is + how to run (GitHub front page; create later).
+- **CLAUDE.md** — this file: conventions Claude auto-loads.
 
 ## Git workflow
 - Commit after each confirmed milestone step.
 - Commit messages in English, imperative mood.
-- Never commit without user confirmation for pushes.
+- Never push without user confirmation.

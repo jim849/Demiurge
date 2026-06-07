@@ -20,7 +20,9 @@ Must clearly reflect:
 - Data recording interface stubs
 
 **Decision log:**
-- *(to be filled as decisions are made)*
+- Doc responsibilities separated: PROJECT_GUIDE (constitution) / PLAN (progress) / README (human-facing run guide, later) / CLAUDE (auto-loaded conventions).
+- Added iron law: RNG dependency injection (no module-global `random` in core) to harden reproducibility.
+- Added iron law: core must be testable headless (no pygame in core).
 
 ---
 
