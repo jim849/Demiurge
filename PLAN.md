@@ -8,7 +8,7 @@ The project constitution (philosophy, iron laws, architecture constraints) lives
 ## Milestones
 
 ### Milestone 0: Project Structure Design
-**Status:** In progress
+**Status:** Complete (design only, no code yet)
 
 Define all files/modules, their responsibilities, and how they interact before writing any functional code.
 Must clearly reflect:
@@ -61,12 +61,12 @@ Demiurge/
 
 **Chromosomes (3, function-grouped, assignment is a config knob):**
 - **Chromosome 1 — Body:** `size`, `speed`, `sense_range`
-- **Chromosome 2 — Metabolism/Life:** `diet`, `repro_threshold`, `metabolism`
+- **Chromosome 2 — Metabolism/Life:** `diet`, `repro_threshold`, `metabolism`, `offspring_investment`
 - **Chromosome 3 — Brain/Personality:** `aggression`, `fear`, `exploration`
 
 Genome = list of chromosomes from day 1 (chromosome-aware structure), so future sexual recombination + linkage need no restructuring. v1 asexual reproduction copies the whole genome, so chromosome count is mechanically inert now — but `size`+`speed` are deliberately placed on the same chromosome (default **linked**); whether to break that linkage is a research question, adjustable via config in M3.
 
-**Genes (9 total, each record carries: value, valid range [min,max], per-gene mutation step):**
+**Genes (10 total, each record carries: value, valid range [min,max], per-gene mutation step):**
 
 | Gene | Range | Role |
 |---|---|---|
@@ -74,11 +74,14 @@ Genome = list of chromosomes from day 1 (chromosome-aware structure), so future 
 | `speed` | 0.1–1.0 | expresses MAX speed cap |
 | `sense_range` | 0.1–1.0 | perception radius fed to the brain |
 | `diet` | 0.0–1.0 | single continuous axis: 0=pure herbivore, 1=pure carnivore |
-| `repro_threshold` | (mapped) | energy needed to split |
+| `repro_threshold` | (mapped) | energy needed to split (WHEN to reproduce) |
 | `metabolism` | 0.1–1.0 | resting energy drain (combined with size) |
+| `offspring_investment` | 0.0–1.0 | fraction of energy given to offspring (HOW MUCH); fission↔budding continuum |
 | `aggression` | 0.0–1.0 | tendency to chase smaller agents |
 | `fear` | 0.0–1.0 | how early to flee larger agents |
 | `exploration` | 0.0–1.0 | random walk vs energy-saving rest when no target |
+
+**Reproduction energy accounting (gene-controlled, r/K selection emerges):** when energy ≥ `repro_threshold` the agent splits (v1: automatic trigger). Offspring receives `offspring_investment × parent_energy`, parent keeps `(1 - offspring_investment) × parent_energy`. Low investment ≈ budding (many cheap weak offspring, r-strategy); ~0.5 ≈ binary fission; high investment ≈ sacrificial (strong offspring, parent risks death, K-strategy). Extreme-low investment is self-punishing (offspring too weak to survive), so "half-split" is a possible *winning* outcome, not a hardcoded rule.
 
 **Phenotype mapping (trade-offs, in `phenotype.py`):**
 - **Speed is not a constant.** `speed` gene → max-speed cap. Actual per-tick speed is chosen by the brain per state: moderate cruising while foraging, max speed only when fleeing. Energy cost grows **super-linearly with actual speed** (≈ speed², real-world metabolic analogy), so always-sprinting starves — populations evolve sensible cruising speeds.
@@ -102,6 +105,29 @@ Genome = list of chromosomes from day 1 (chromosome-aware structure), so future 
 Note: because appearance reads functional genes, convergent evolution can make unrelated lineages look alike (real phenomenon, e.g. shark vs dolphin). A neutral lineage marker (to distinguish kinship from convergence) is deferred to M3. "Species" as a mating-boundary mechanism also arrives with sexual reproduction in M3.
 
 **Diversity-maintenance prerequisites (built into world rules, not forced):** plants regenerate (can't be eaten to zero in one pass), predation has a threshold + miss cost, and the world has spatial structure (not a homogeneous soup). These let negative frequency-dependent selection (predator-prey oscillation) emerge. Convergence ("monopoly") remains a legitimate observable outcome.
+
+### Decision (Brain) Design v1 (finalized in Milestone 0)
+
+The brain is a **pure function**: perception in → action out. This input/output interface is fixed now so a future neural network consumes the same inputs and emits the same outputs (decision is a swappable module, iron law 5).
+
+**Perception input** (only within `sense_range`): list of nearby agents (relative position + size), list of nearby plants (relative position), own internal state (current energy).
+
+**Action output**: `move(direction, speed_fraction)` OR `eat(target)`. Reproduction is handled separately (auto-trigger v1).
+
+**Arbitration: priority ladder (method A), top-down, first match wins:**
+1. **Flee** — a significantly larger agent in range → move away at max speed. Trigger modulated by `fear` (high fear flees early/far, low fear flees only when close).
+2. **Eat** — an edible target adjacent → eat (plant weighted by `1-diet`; prey weighted by `diet` + size advantage).
+3. **Hunt/forage** — suitable food in range → move toward nearest at cruising speed; prey-vs-plant choice weighted by `diet` and `aggression`.
+4. **Wander/rest** — no target → `exploration` decides random walk vs resting to save energy.
+
+Method A chosen for v1 (interpretable, debuggable, personality genes active throughout). Likely upgrade to **method B (utility scoring)** later — swappable without touching core. Reproduction is auto-triggered in v1 but isolated so it can later become a brain-decided action.
+
+### World / Config Structural Decisions (finalized in Milestone 0)
+
+- **Boundary: toroidal** (wrap-around) — no edge effects, suited to ecological study.
+- **Plants: patches of varying size and richness** (config: patch count + size range) — creates resource-rich/poor regions, spatial heterogeneity, forces migration and local arms races.
+- **Reproduction energy: gene-controlled split** via `offspring_investment` (see gene table) — fission vs budding emerges, not hardcoded.
+- **Numeric starting points (all tunable, tuned by observation later):** world 1000×1000 continuous units; ~300 initial agents with random genomes; plant regen rate + max density per patch; starting energy, super-linear move cost, plant energy value, predation energy = fraction of prey energy; death when energy ≤ 0 or predated; per-gene mutation step (body genes small/slow, brain genes can be larger) + mutation probability; fixed RNG seed; deterministic update order by agent id.
 
 ---
 
