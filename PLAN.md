@@ -45,6 +45,9 @@ Demiurge/
 │   ├── decision/      # replaceable decision module (law 5)
 │   │   ├── base.py    # decision-maker interface (ABC)
 │   │   └── rule_based.py
+│   ├── reproduction/  # replaceable reproduction module (law 5)
+│   │   ├── base.py    # reproduction interface: (parent genome, rng) -> child genome
+│   │   └── asexual.py # v1: copy + mutate (calls genome.mutate); M3 adds sexual.py
 │   └── recording.py   # data recording interface stub (law 6)
 ├── render/            # rendering/input — pygame lives only here (laws 1,2,4)
 │   ├── renderer.py    # draws from pure snapshot data
@@ -170,5 +173,7 @@ Analyze convergence states: stable coexistence, predator-prey oscillation, monop
 
 ## Notes & Open Questions
 
-- Predator decision rule (v1): move toward nearest significantly smaller agent; random walk if no target. Body size difference threshold TBD.
-- Sexual reproduction interface must be designed to be swappable from milestone 1.
+Deferred to Milestone 1 implementation (design decided, exact placement/values TBD):
+- **Selection state ownership**: snapshot carries a "selected" flag, but where the selected-agent logic state lives (on `World` vs `Agent`) is TBD. It is a logic state (iron law 4), set by `render/input.py`, never owned by the render layer.
+- **Neighbor-query home**: continuous coordinates need spatial partitioning (grid buckets) for perception/contact. v1 may brute-force O(n²) for a few hundred agents; add a spatial index inside `world.py` later behind the same access interface.
+- **Eat contact radius**: continuous space needs an "adjacent enough to eat" radius — add to config starting points.
