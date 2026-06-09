@@ -38,7 +38,7 @@ Demiurge/
 ├── core/              # simulation core — zero pygame (law 1)
 │   ├── world.py       # World: holds agents/plants, advances one tick, exposes access interface
 │   ├── agent.py       # Agent: energy, position, heading, genome, decision-maker
-│   ├── genome.py      # chromosome / genes (core data structure)
+│   ├── genome.py      # chromosome / genes (core data structure); atomic get/set gene API + mutate
 │   ├── phenotype.py   # genotype -> phenotype mapping (incl. brain expression)
 │   ├── vector.py      # vector position/heading (law 3, 3D-ready)
 │   ├── rng.py         # RNG instance held & passed explicitly (laws 7, 8)
@@ -53,8 +53,10 @@ Demiurge/
 │   ├── renderer.py    # draws from pure snapshot data
 │   └── input.py       # mouse click -> selected-agent logic state
 └── demiurge/          # creator intervention channel
-    └── interventions.py  # read/edit any agent's genes; create agent from given genes
+    └── interventions.py  # high-level creator entry points (wraps genome API + world placement)
 ```
+
+**Gene system layering (the three creator entry points):** `genome.py` owns the low-level, independently-testable data API — read a gene, write a gene (range-validated), copy, mutate — with no knowledge of the world. `demiurge/interventions.py` builds the three creator-facing capabilities on top: (1) read any existing agent's genes, (2) edit any existing agent's genes, (3) create a brand-new agent from given gene values and place it into the world at a chosen position. Gene read/write thus belongs to the gene system (testable headless); the creator layer is just a caller that also handles world placement. This keeps the future graphical gene editor a thin layer over the same API.
 
 ---
 
