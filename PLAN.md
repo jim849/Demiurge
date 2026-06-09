@@ -174,6 +174,20 @@ Core engine untouched.
 Add sexual reproduction as a research variable.
 Reproduction logic was designed for this extension from the start.
 
+Also delivers (deferred here from M0): the **neutral lineage marker** — a
+no-fitness-effect gene to distinguish kinship from convergent evolution in the
+visual read-out — and **"species" as a mating-boundary** mechanism.
+
+**Extension (scope TBD at M3): evolvable parent-count / multi-sex reproduction.**
+Let a heritable gene encode "how many parents per reproduction event" (and/or a
+mating-type), so 1 (asexual), 2 (sexual), or N can *emerge* and compete under
+selection rather than being hardcoded — including letting the system settle on
+its own optimal parent count. Depends on M3's chromosome recombination machinery
+(multi-parent recombination is meaningless before two-parent recombination
+exists), so it cannot start earlier. Decide at M3 whether this stays folded into
+M3 or splits into its own milestone, based on the observed asexual-vs-sexual
+competition results.
+
 ---
 
 ### Milestone 4: Data Recording & Analysis
@@ -184,7 +198,55 @@ Analyze convergence states: stable coexistence, predator-prey oscillation, monop
 
 ---
 
+### Milestone 5: Inertia / Agility Movement
+**Status:** Not started (stub — scope to be detailed before work begins)
+
+Upgrade v1's simple size-neutral movement to a momentum model: mass (∝ `size`)
+limits per-tick acceleration and turn rate. Top speed stays gene-driven, but big
+bodies steer sluggishly and small prey can juke big predators. Brain output shifts
+from "pick a velocity" to "pick a desired heading; physics applies mass-limited
+steering." Lands the real size↔speed trade-off. (See backlog entry for detail.)
+
+---
+
+### Milestone 6: Life History (Ontogeny + Aging)
+**Status:** Not started (stub — scope to be detailed before work begins)
+
+Add a juvenile→adult development curve (phenotype changes with age/accumulated
+energy) and optional senescence (a lifespan/aging gene). New life-history
+trade-offs; v1 spawns fully-formed and has no lifespan cap. (See backlog entries.)
+
+---
+
+### Milestone 7: Radiation Zones / Radiation Food
+**Status:** Not started (stub — scope to be detailed before work begins)
+
+Add a heritable radiation-preference gene plus a rule that eating irradiated food
+or entering a radiation zone triggers `genome.mutate(rng)` *during life* (not only
+at birth). Observe whether some lineages evolve to seek radiation (faster mutation
+/ niche) and others to avoid it. (See backlog entry; design already supports it.)
+
+---
+
+### Milestone 8: Neutral Networks / Cryptic Variation
+**Status:** Not started (stub — scope to be detailed before work begins)
+
+Deliberately introduce many-to-one genotype→phenotype mappings (or redundant
+genes) so the population can drift through genotype space without losing fitness,
+accumulating hidden variation that later selection can expose. Study robustness
+and evolvability. (See backlog entry.)
+
+*Note: M5–M8 ordering is provisional; each is an independent research axis and may
+be resequenced. They are anchored here so the roadmap shows intent, not committed
+to be built in this order.*
+
+---
+
 ## Future Research Axes (backlog)
+
+(Now promoted to milestones M5–M8 above; the detailed write-ups below remain the
+reference spec for each. The lineage marker and multi-sex reproduction live under
+M3.)
 
 Ideas deliberately deferred out of v1 to keep the first loop clean. Each is a
 research variable to add later and observe what emerges. Recorded here so they
