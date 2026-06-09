@@ -36,4 +36,5 @@ python main.py
 ## Git workflow
 - Commit after each confirmed milestone step.
 - Commit messages in English, imperative mood.
-- Never push without user confirmation.
+- Push to remote after each milestone (M0, M1, ...) completes.
+- Never force-push.
