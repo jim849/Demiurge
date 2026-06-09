@@ -219,3 +219,6 @@ __marimo__/
 
 # Claude Code local settings
 .claude/
+
+# Project virtual environment (the garden where life grows)
+eden_venv/
