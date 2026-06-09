@@ -127,12 +127,23 @@ The brain is a **pure function**: perception in → action out. This input/outpu
 
 Method A chosen for v1 (interpretable, debuggable, personality genes active throughout). Likely upgrade to **method B (utility scoring)** later — swappable without touching core. Reproduction is auto-triggered in v1 but isolated so it can later become a brain-decided action.
 
+### Tick Update Model (finalized in Milestone 0)
+
+**Simultaneous update, two phases per tick:**
+1. **Decide phase** — every agent reads the SAME tick-start world snapshot and produces an action. No world state changes during this phase, so there is no low-id advantage (the hidden, gene-irrelevant selection pressure that sequential update would introduce).
+2. **Resolve phase** — all actions are applied together; energy/position/births/deaths settle.
+
+**Conflict resolution** (only for rare same-frame contests, e.g. two predators targeting one prey, or two agents eating one plant): **the stronger contestant (larger `size`) wins; exact ties broken by the injected seeded RNG (coin-flip).** Rationale: this is an ecological contest, so selection should act on a real gene (`size`) — not on id (which would re-introduce the bias we chose simultaneous update to remove). Fully reproducible. A strength-weighted probabilistic contest is an easy future upgrade if rigidity becomes an issue.
+
+**Snapshot contents** (core → render/analysis, pure data): `{ agents[], plants[], selected_agent_id, tick }`. Built fresh each tick from the AoS internal storage at the boundary.
+
 ### World / Config Structural Decisions (finalized in Milestone 0)
 
 - **Boundary: toroidal** (wrap-around) — no edge effects, suited to ecological study.
 - **Plants: patches of varying size and richness** (config: patch count + size range) — creates resource-rich/poor regions, spatial heterogeneity, forces migration and local arms races.
 - **Reproduction energy: gene-controlled split** via `offspring_investment` (see gene table) — fission vs budding emerges, not hardcoded.
-- **Numeric starting points (all tunable, tuned by observation later):** world 1000×1000 continuous units; ~300 initial agents with random genomes; plant regen rate + max density per patch; starting energy, super-linear move cost, plant energy value, predation energy = fraction of prey energy; death when energy ≤ 0 or predated; per-gene mutation step (body genes small/slow, brain genes can be larger) + mutation probability; fixed RNG seed; deterministic update order by agent id.
+- **Mutation: small + stable.** Each gene mutates independently with a small per-gene probability and a small per-gene step; defaults kept low to avoid destabilizing the population (large mutation = chaotic, never converges). All tunable. Body genes slower (small step), brain genes may be slightly larger.
+- **Numeric starting points (all tunable, tuned by observation later):** world 1000×1000 continuous units; ~300 initial agents with random genomes; plant regen rate + max density per patch; starting energy, super-linear move cost, plant energy value, predation energy = fraction of prey energy; eat contact radius; death when energy ≤ 0 or predated; fixed RNG seed; simultaneous two-phase update (see Tick Update Model).
 
 ---
 
@@ -178,4 +189,6 @@ Analyze convergence states: stable coexistence, predator-prey oscillation, monop
 Deferred to Milestone 1 implementation (design decided, exact placement/values TBD):
 - **Selection state ownership**: snapshot carries a "selected" flag, but where the selected-agent logic state lives (on `World` vs `Agent`) is TBD. It is a logic state (iron law 4), set by `render/input.py`, never owned by the render layer.
 - **Neighbor-query home**: continuous coordinates need spatial partitioning (grid buckets) for perception/contact. v1 may brute-force O(n²) for a few hundred agents; add a spatial index inside `world.py` later behind the same access interface.
-- **Eat contact radius**: continuous space needs an "adjacent enough to eat" radius — add to config starting points.
+- **Eat contact radius**: continuous space needs an "adjacent enough to eat" radius — added to config starting points.
+- **Determinism hygiene (implementation reminder)**: never iterate over `set`s in the core (insertion-order-unstable breaks reproducibility); sort neighbor-query results deterministically. Mutation/conflict RNG must come from the injected instance (laws 7, 8).
+- **No aging in v1**: agents die only from energy ≤ 0 or predation; no lifespan cap. Generally fine (reproduction splits away energy), but a lifespan/senescence gene is a candidate future research variable.
