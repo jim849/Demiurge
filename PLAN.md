@@ -166,6 +166,14 @@ Completion criteria:
 Replace rule-based decision with neural-network-driven decision.
 Core engine untouched.
 
+**Extension (scope TBD at M2): evolvable brain architecture — let the rule-based
+and neural-network brains *compete*.** Add a heritable "brain architecture"
+selector (a gene or genome region) so offspring inherit which decision-maker they
+use; selection then decides whether rule-based or NN minds win, or coexist in
+different niches. Architecture is per-agent already (each agent holds its own
+decision-maker, M0), so the engine supports a mixed population — this extension
+just makes the choice heritable rather than seeding two fixed sub-populations.
+
 ---
 
 ### Milestone 3: Sexual Reproduction
@@ -209,7 +217,32 @@ steering." Lands the real size↔speed trade-off. (See backlog entry for detail.
 
 ---
 
-### Milestone 6: Life History (Ontogeny + Aging)
+### Milestone 6: Predation Mechanics
+**Status:** Not started (stub — scope to be detailed before work begins)
+
+Enrich the predator-prey *interaction* layer (distinct from M5 locomotion). v1
+keeps eating instantaneous, contact = sum of body radii (size-driven reach), and
+predation gated only by a size-advantage threshold. This milestone adds:
+
+- **Reach gene / ambush predators.** A heritable attack-reach trait decoupled from
+  body size, so a small-but-long-reach lineage can ambush prey — reach may even
+  exceed the prey's perception radius, letting "the prey never sees it coming"
+  emerge. Visualized as a forward-pointing "limb/snout" line along `heading`
+  (length ∝ reach), visually distinct from aggression spikes and the sense halo.
+  **OPEN QUESTION — the cost of long reach is still TBD** (must exist or it
+  dominates). Candidates: higher resting-energy upkeep (cheapest, reuses
+  `resting_cost`); a hit-rate penalty (longer reach = harder to connect); or
+  speed/agility drag from large appendages. To be decided when this milestone is
+  scoped.
+- **Strike hit/miss probability** (optional): a stochastic catch outcome (via the
+  injected RNG) so predation isn't a sure thing once in range.
+- **Handling time + feeding-rate gene.** Eating becomes a multi-tick committed
+  action rather than instantaneous; a gene controls feeding speed. Creates a
+  vulnerability window (a feeding agent is exposed to ambush) and a real
+  functional-response trade-off. Requires per-agent "eating state" and a decision
+  on whether feeding can be interrupted — to be designed when scoped.
+
+### Milestone 7: Life History (Ontogeny + Aging)
 **Status:** Not started (stub — scope to be detailed before work begins)
 
 Add a juvenile→adult development curve (phenotype changes with age/accumulated
@@ -218,7 +251,7 @@ trade-offs; v1 spawns fully-formed and has no lifespan cap. (See backlog entries
 
 ---
 
-### Milestone 7: Radiation Zones / Radiation Food
+### Milestone 8: Radiation Zones / Radiation Food
 **Status:** Not started (stub — scope to be detailed before work begins)
 
 Add a heritable radiation-preference gene plus a rule that eating irradiated food
@@ -228,7 +261,7 @@ at birth). Observe whether some lineages evolve to seek radiation (faster mutati
 
 ---
 
-### Milestone 8: Neutral Networks / Cryptic Variation
+### Milestone 9: Neutral Networks / Cryptic Variation
 **Status:** Not started (stub — scope to be detailed before work begins)
 
 Deliberately introduce many-to-one genotype→phenotype mappings (or redundant
@@ -236,7 +269,7 @@ genes) so the population can drift through genotype space without losing fitness
 accumulating hidden variation that later selection can expose. Study robustness
 and evolvability. (See backlog entry.)
 
-*Note: M5–M8 ordering is provisional; each is an independent research axis and may
+*Note: M5–M9 ordering is provisional; each is an independent research axis and may
 be resequenced. They are anchored here so the roadmap shows intent, not committed
 to be built in this order.*
 
@@ -244,9 +277,9 @@ to be built in this order.*
 
 ## Future Research Axes (backlog)
 
-(Now promoted to milestones M5–M8 above; the detailed write-ups below remain the
-reference spec for each. The lineage marker and multi-sex reproduction live under
-M3.)
+(Now promoted to milestones M5/M7/M8/M9 above; the detailed write-ups below remain
+the reference spec for each. The lineage marker and multi-sex reproduction live
+under M3; predation mechanics — reach/ambush, hit/miss, handling time — are M6.)
 
 Ideas deliberately deferred out of v1 to keep the first loop clean. Each is a
 research variable to add later and observe what emerges. Recorded here so they
