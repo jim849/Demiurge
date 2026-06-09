@@ -184,6 +184,37 @@ Analyze convergence states: stable coexistence, predator-prey oscillation, monop
 
 ---
 
+## Future Research Axes (backlog)
+
+Ideas deliberately deferred out of v1 to keep the first loop clean. Each is a
+research variable to add later and observe what emerges. Recorded here so they
+aren't lost.
+
+- **Inertia / agility movement model** (enhancement to v1 simple movement): give
+  agents momentum; mass (∝ `size`) limits per-tick acceleration and turn rate, so
+  top speed stays gene-driven but large bodies accelerate/turn sluggishly and
+  small prey can juke big predators. Brain output changes from "pick a velocity"
+  to "pick a desired heading; physics applies mass-limited steering." Richer chase
+  dynamics. (Decided v1 uses simple, size-neutral max speed; see Phenotype mapping.)
+- **Radiation food / radiation zones**: add a heritable radiation-preference gene
+  (on the brain chromosome) plus a rule that eating irradiated food or entering a
+  radiation zone triggers `genome.mutate(rng)` during life (not only at birth).
+  Observe whether some lineages evolve to seek radiation (faster mutation / niche)
+  and others to avoid it. Design already supports this: mutation machinery exists,
+  and an immutable Phenotype is simply re-expressed after genes change.
+- **Neutral networks / cryptic variation**: the current genotype→phenotype map is
+  nearly one-to-one, leaving little neutral redundancy. To enable neutral drift
+  (population wandering genotype space without losing fitness, accumulating hidden
+  variation that can later be exposed), deliberately introduce many-to-one mappings
+  or redundant genes. Study robustness and evolvability.
+- **Growth / development (ontogeny)**: agents currently spawn fully formed. Add a
+  juvenile→adult development curve so phenotype changes with age/accumulated energy
+  (e.g. size/abilities ramp up over a lifetime). New life-history trade-offs.
+- **Aging / senescence**: (also noted below) v1 has no lifespan cap; a senescence
+  gene is a candidate future variable.
+- **Neutral lineage marker** (see M3): a no-fitness-effect marker to distinguish
+  kinship from convergent evolution in the visual read-out.
+
 ## Notes & Open Questions
 
 Deferred to Milestone 1 implementation (design decided, exact placement/values TBD):

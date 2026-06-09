@@ -12,6 +12,7 @@ phenotype.py, not this schema.
 from __future__ import annotations
 
 from core.genome import ChromosomeSpec, GeneSpec
+from core.phenotype import PhenotypeParams
 
 # --- mutation defaults -------------------------------------------------------
 # Kept small for stability (large mutation = chaotic, never converges).
@@ -51,6 +52,29 @@ GENOME_SCHEMA: tuple[ChromosomeSpec, ...] = (
             GeneSpec("exploration", 0.0, 1.0, _BRAIN_STEP, _MUT_PROB),
         ),
     ),
+)
+
+# --- phenotype mapping coefficients ------------------------------------------
+# Curve SHAPES live in core/phenotype.py; these tunable COEFFICIENTS live here
+# (iron law 10). All values are starting points, to be tuned by observation.
+PHENOTYPE_PARAMS = PhenotypeParams(
+    # Movement
+    speed_unit=10.0,
+    move_cost_coeff=0.5,
+    speed_cost_exponent=2.0,
+    # Metabolism / perception
+    base_rest=0.1,
+    metab_cost_coeff=0.5,
+    sense_rest_coeff=0.3,
+    sense_unit=100.0,
+    # Reproduction
+    repro_min=50.0,
+    repro_max=200.0,
+    # Diet: carnivory peak higher than herbivory; exponents >1 sharpen niches
+    herb_max=1.0,
+    carn_max=1.5,
+    herb_exp=1.5,
+    carn_exp=1.5,
 )
 
 # --- reproducibility ---------------------------------------------------------
