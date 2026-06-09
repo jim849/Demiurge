@@ -142,6 +142,7 @@ Method A chosen for v1 (interpretable, debuggable, personality genes active thro
 - **Boundary: toroidal** (wrap-around) — no edge effects, suited to ecological study.
 - **Plants: patches of varying size and richness** (config: patch count + size range) — creates resource-rich/poor regions, spatial heterogeneity, forces migration and local arms races.
 - **Reproduction energy: gene-controlled split** via `offspring_investment` (see gene table) — fission vs budding emerges, not hardcoded.
+- **Offspring placement: born near the parent** (small random offset, config radius). Realistic for most animals and, crucially, creates **population viscosity** — neighbors tend to be kin — which is the substrate kin selection / spatial reciprocity need (see M10 Sociality). Dispersal distance is a candidate future gene (some lineages broadcast far); v1 keeps it a fixed small radius.
 - **Mutation: small + stable.** Each gene mutates independently with a small per-gene probability and a small per-gene step; defaults kept low to avoid destabilizing the population (large mutation = chaotic, never converges). All tunable. Body genes slower (small step), brain genes may be slightly larger.
 - **Numeric starting points (all tunable, tuned by observation later):** world 1000×1000 continuous units; ~300 initial agents with random genomes; plant regen rate + max density per patch; starting energy, super-linear move cost, plant energy value, predation energy = fraction of prey energy; eat contact radius; death when energy ≤ 0 or predated; fixed RNG seed; simultaneous two-phase update (see Tick Update Model).
 
@@ -173,6 +174,17 @@ use; selection then decides whether rule-based or NN minds win, or coexist in
 different niches. Architecture is per-agent already (each agent holds its own
 decision-maker, M0), so the engine supports a mixed population — this extension
 just makes the choice heritable rather than seeding two fixed sub-populations.
+
+**Extension (scope TBD at M2): developmental budget — physical vs neural
+trade-off (antagonistic pleiotropy).** Deepen "no free lunch" from per-gene cost
+to a *shared budget* across genes: expensive neural tissue competes with expensive
+muscle/weaponry for the same energy pool, so heavy investment in `size` + `speed`
++ reach reduces available brain capacity (real biology: brains are metabolically
+expensive). Lives in `phenotype.py` (trade-off curves belong there). Only bites
+once a brain has a measurable capacity dimension — i.e. the NN brain's hidden
+size / weight count — so it is anchored to M2; in v1's rule-based brain "capacity"
+is not yet a quantity. Lets "fast, well-armed, but dumb" vs "slow, fragile, but
+smart" niches emerge instead of one super-genome maxing everything.
 
 ---
 
@@ -269,7 +281,52 @@ genes) so the population can drift through genotype space without losing fitness
 accumulating hidden variation that later selection can expose. Study robustness
 and evolvability. (See backlog entry.)
 
-*Note: M5–M9 ordering is provisional; each is an independent research axis and may
+---
+
+### Milestone 10: Sociality & Cooperation
+**Status:** Not started (stub — scope to be detailed before work begins)
+
+Make cooperation *evolvable* (never hardcoded). The hard problem is the free
+rider: cooperation is usually altruistic (costly to actor, useful to recipient),
+so cheaters who take help without giving invade. Cooperation only survives with a
+payoff structure plus a mechanism that makes cooperators preferentially interact
+with cooperators: spatial assortment (we have spatial structure + viscosity if
+offspring spawn near parents), kin recognition (the M3 lineage marker), or
+reciprocity memory (the M2 NN brain's internal state). So this milestone depends
+on M2/M3/M6 and logically follows them.
+
+Today the only inter-agent interactions are predation and fleeing (antagonistic);
+the one cooperation already present is **parental care** via `offspring_investment`
+(kin investment). New cooperative *primitives* to add: energy-sharing, a
+signal/alarm action (new perception channel), group-hunt payoff, and kin-aware
+restraint ("don't eat my kind"). Layered by ease of emergence:
+
+- **Group hunting (by-product mutualism, easiest):** prey too big for one becomes
+  catchable when several co-attack; immediate mutual food payoff. Hooks into M6
+  predation mechanics + the size-advantage threshold. Pack hunting emerges.
+- **Selfish herd / anti-predator grouping:** if clustering dilutes individual
+  predation risk, a "approach conspecifics" behavior is selected with zero altruism
+  — flocks/herds emerge (looks cooperative, is self-interested).
+- **Kin-selected altruism:** with the M3 lineage marker, a greenbeard-style "help
+  those whose marker matches mine" gene lets food-sharing / not-eating-kin emerge.
+- **Reciprocity + signaling (hardest):** alarm calls, recruitment signals; needs
+  partner memory, a fit for the M2 NN brain.
+
+**Hypothesis to observe (from project discussion):** once sexual reproduction makes
+fitness depend on *mate availability* (an Allee effect — too few nearby
+conspecifics → can't reproduce), there is group-level pressure not to drive one's
+own kind to local extinction, which may favor intraspecific restraint/cooperation.
+Caveat: this group-level benefit alone does not beat within-group cheaters; it must
+ride on kin/spatial assortment to be selected at the individual level. Worth
+testing whether sexual reproduction + mate-availability pressure measurably shifts
+cooperation.
+
+**Interspecific cooperation (latest):** mutualism between lineages (needs the M3
+species concept). Most plausible emergent route is metabolic cross-feeding /
+syntrophy — multiple resource + waste types where one lineage's waste feeds
+another. An ecosystem-level addition; sequenced after a species concept exists.
+
+*Note: M5–M10 ordering is provisional; each is an independent research axis and may
 be resequenced. They are anchored here so the roadmap shows intent, not committed
 to be built in this order.*
 
