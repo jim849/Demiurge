@@ -198,9 +198,19 @@ Completion criteria:
   sector/cone `perceive`, two-phase `tick` (decide→resolve: move/energy/age/death),
   immutable `WorldSnapshot`.
 - `core/recording.py` — stubbed Recorder seam (NullRecorder default, iron law 6).
+- Energy economy income wired: plants (discrete entities) + fixed-rate capped
+  regrowth; herbivory resolve (fair conflict arbitration); predation resolve
+  (size-gated, eat-before-move, meal = reserves + structural biomass). **This v1
+  economy is deliberately NON-conservative** — a chosen scaffold, not a bug:
+  carnivory is energy-dense (`carn_max` 1.5 > 1) and a slain body yields more than
+  its reserves, while a dead agent's leftover energy simply vanishes. Reason: in a
+  small world, strict conservation starves the carnivore niche before it can
+  emerge (energy-pyramid losses leave too little up the chain). The route back to
+  conservation is recorded as a backlog item ("Energy conservation & decomposer
+  loop").
 
 **Still to do for M1:** `main.py` headless smoke run; rendering layer (pygame,
-iron laws 1–4) + click-to-inspect; eat/reproduce/mutate resolution; creator
+iron laws 1–4) + click-to-inspect; reproduce/mutate resolution; creator
 console hooks.
 
 ---
@@ -429,6 +439,34 @@ aren't lost.
   gene is a candidate future variable.
 - **Neutral lineage marker** (see M3): a no-fitness-effect marker to distinguish
   kinship from convergent evolution in the visual read-out.
+- **Energy conservation & decomposer loop**: v1's energy economy is *deliberately
+  non-conservative* (see M1 progress note) — a scaffold so the carnivore niche is
+  viable and observable while the world is small. **The target invariant is
+  conservation**: one external source (sunlight via plants) and a closed loop, no
+  energy created or leaked. The non-conservation today is concentrated in three
+  named, bounded knobs, so reaching conservation is dialing them down + one
+  structural addition (the decomposer), NOT an economy rewrite:
+  1. **Digestion efficiency ≤ 1.** Drop `carn_max` to ≤ 1 so a meal can only lose
+     energy in transfer, never multiply it (herbivory's `herb_max` = 1 is already
+     conservative). This removes the "carnivory amplifies energy" source.
+  2. **Growth as an energy account.** Building/maintaining a body must cost energy,
+     so a body literally *stores* the energy that went into it. Then predation's
+     structural meal term (`body_value_coeff · body_radius²`) stops being invented
+     energy and becomes *recovering the prey's past investment* — conservative by
+     construction. (Pairs naturally with M7 ontogeny: growth over a lifetime.)
+  3. **Decomposer loop closes the death leak.** Today a dead agent's leftover
+     energy vanishes. Add death → corpse (a food entity) → scavenging / decay that
+     returns the energy to plants (the real-world detritus loop). Without this,
+     even efficiency ≤ 1 still bleeds the system dry over time.
+  - **Make (non-)conservation measurable.** Use the Recorder seam (iron law 6) to
+    log a per-tick energy ledger — total system energy split by source/sink (solar
+    in, metabolism, movement, death leak, predation creation). Then "approach
+    conservation" becomes a measured curve to drive toward zero leak, not a vibe.
+  - **Caveat: conservation ≠ stability.** A perfectly closed economy can still
+    crash (Lotka–Volterra oscillation to extinction). Conservation is necessary for
+    realism but not sufficient for a living world — hence the staging: get the world
+    *alive and observable* first (loose economy), then tighten toward conservation
+    while keeping it alive. Promote to a numbered milestone when scoped.
 
 ## Notes & Open Questions
 
