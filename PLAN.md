@@ -149,7 +149,7 @@ Method A chosen for v1 (interpretable, debuggable, personality genes active thro
 ---
 
 ## Milestone 1: Core Loop
-**Status:** Not started
+**Status:** In progress — headless core loop runs end-to-end (no rendering / eat / reproduce yet)
 
 Get the full cycle running: **energy → move → eat → reproduce → mutate → die**
 
@@ -158,6 +158,24 @@ Completion criteria:
 - Agents move, eat, reproduce; population evolves over time
 - Click an agent to inspect its chromosome
 - Manual gene editing and agent creation available via console/config
+
+**Progress (headless core, all tested green):**
+- `core/vector.py` — immutable N-dim Vector.
+- `core/rng.py` — injectable, seeded Rng with named sub-streams (iron laws 7, 8).
+- `core/genome.py` + `config.GENOME_SCHEMA` — 11-gene generic genome engine.
+- `core/phenotype.py` — genotype→phenotype expression; "no free lunch" trade-off
+  curves (move/metabolism/vision costs, diet single-axis, B′ eat probabilities).
+- `core/decision/base.py` — brain interface + Perception/Action value objects.
+- `core/decision/rule_based.py` — v1 hand-written brain (flee>eat>hunt/forage>wander).
+- `core/agent.py` — lean agent + `decision_maker` slot.
+- `core/world.py` — toroidal World: deterministic populate (random unit headings),
+  sector/cone `perceive`, two-phase `tick` (decide→resolve: move/energy/age/death),
+  immutable `WorldSnapshot`.
+- `core/recording.py` — stubbed Recorder seam (NullRecorder default, iron law 6).
+
+**Still to do for M1:** `main.py` headless smoke run; rendering layer (pygame,
+iron laws 1–4) + click-to-inspect; eat/reproduce/mutate resolution; creator
+console hooks.
 
 ---
 
