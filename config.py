@@ -16,6 +16,7 @@ import math
 from core.decision.rule_based import BrainParams
 from core.genome import ChromosomeSpec, GeneSpec
 from core.phenotype import PhenotypeParams
+from core.plant import PlantParams
 
 # --- mutation defaults -------------------------------------------------------
 # Kept small for stability (large mutation = chaotic, never converges).
@@ -107,10 +108,14 @@ BRAIN_PARAMS = BrainParams(
 # --- plants (food) -----------------------------------------------------------
 # Discrete plant entities; energy is the food value transferred (scaled by the
 # eater's herbivory efficiency) when one is consumed whole. Starting points,
-# to be tuned by observation. Regrowth rate / max density arrive with sub-step 3.
-INITIAL_PLANT_COUNT = 400
-PLANT_ENERGY = 30.0        # food value of one plant
-PLANT_BODY_RADIUS = 3.0    # world-space radius (contact = sum of body radii)
+# to be tuned by observation.
+INITIAL_PLANT_COUNT = 400  # plants scattered at world setup
+PLANT_PARAMS = PlantParams(
+    energy=30.0,        # food value of one plant
+    body_radius=3.0,    # world-space radius (contact = sum of body radii)
+    regen_per_tick=4,   # new plants scattered each tick (fixed-rate regrowth)
+    max_count=600,      # hard cap on living plants (regrowth stops here)
+)
 
 # --- reproducibility ---------------------------------------------------------
 DEFAULT_SEED = 20260609

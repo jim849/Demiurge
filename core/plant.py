@@ -37,3 +37,30 @@ class Plant:
             raise ValueError("plant body_radius must be positive")
         if self.energy <= 0:
             raise ValueError("plant energy must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class PlantParams:
+    """Tunable plant-economy coefficients (instantiated from config, iron law 10).
+
+    `regen_per_tick` new plants are scattered each tick until the world holds
+    `max_count`. A fixed-rate, hard-capped model: simple and, because regrowth runs
+    every tick, the food supply can never be permanently grazed to zero (PLAN's
+    "can't be eaten to zero in one pass"). A density-dependent (logistic) rate is a
+    candidate refinement later.
+    """
+
+    energy: float
+    body_radius: float
+    regen_per_tick: int
+    max_count: int
+
+    def __post_init__(self) -> None:
+        if self.energy <= 0:
+            raise ValueError("plant energy must be positive")
+        if self.body_radius <= 0:
+            raise ValueError("plant body_radius must be positive")
+        if self.regen_per_tick < 0:
+            raise ValueError("regen_per_tick cannot be negative")
+        if self.max_count < 0:
+            raise ValueError("max_count cannot be negative")

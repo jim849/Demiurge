@@ -42,7 +42,7 @@ from core.decision.base import (
 )
 from core.genome import ChromosomeSpec, Genome
 from core.phenotype import PhenotypeParams, express
-from core.plant import Plant
+from core.plant import Plant, PlantParams
 from core.recording import NullRecorder, Recorder
 from core.rng import Rng
 from core.vector import Vector
@@ -118,6 +118,7 @@ class World:
         "_brain_factory",
         "_next_id",
         "_recorder",
+        "_plant_params",
     )
 
     def __init__(
@@ -129,6 +130,7 @@ class World:
         phenotype_params: PhenotypeParams,
         brain_factory: BrainFactory,
         recorder: Recorder | None = None,
+        plant_params: PlantParams | None = None,
     ) -> None:
         if any(extent <= 0 for extent in size):
             raise ValueError("every world extent must be positive")
@@ -147,6 +149,8 @@ class World:
         self._next_id = 0
         # Data-recording seam (iron law 6): default is a no-op sink.
         self._recorder = recorder if recorder is not None else NullRecorder()
+        # Plant economy (optional): when set, tick() regrows plants each step.
+        self._plant_params = plant_params
 
     # --- id allocation (World owns the counter, iron law 7) -------------------
 
@@ -339,6 +343,25 @@ class World:
             )
             self.spawn_plant(position, energy=energy, body_radius=body_radius)
 
+    def _regrow_plants(self, rng: Rng) -> None:
+        """Scatter up to `regen_per_tick` new plants, capped at `max_count`.
+
+        No-op when the world has no plant economy (`plant_params` is None). Because
+        this runs every tick, the food supply recovers even after being grazed flat
+        -- it can never be permanently eaten to zero.
+        """
+        pp = self._plant_params
+        if pp is None:
+            return
+        room = pp.max_count - len(self.plants)
+        to_add = min(pp.regen_per_tick, room)
+        for i in range(to_add):  # to_add <= 0 -> no iterations
+            pos_rng = rng.spawn(f"pos/{i}")
+            position = Vector.from_iterable(
+                pos_rng.uniform(0.0, extent) for extent in self.size
+            )
+            self.spawn_plant(position, energy=pp.energy, body_radius=pp.body_radius)
+
     # --- the two-phase tick ---------------------------------------------------
 
     def tick(self) -> None:
@@ -381,6 +404,9 @@ class World:
 
         # Reap the dead.
         self.agents = {aid: a for aid, a in self.agents.items() if a.alive}
+
+        # Regrow food (fixed rate, capped) so it is reflected in this tick's snapshot.
+        self._regrow_plants(tick_rng.spawn("regrow"))
 
         self.tick_count += 1
         self._recorder.record_tick(self.snapshot())

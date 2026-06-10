@@ -12,6 +12,7 @@ import pytest
 from core.decision.base import DecisionMaker, EatAction, MoveAction, Perception
 from core.decision.rule_based import RuleBasedBrain
 from core.genome import Genome
+from core.plant import PlantParams
 from core.recording import Recorder
 from core.rng import Rng
 from core.vector import Vector
@@ -642,3 +643,55 @@ def test_eating_a_prey_target_is_deferred_no_consumption():
     w.tick()
     assert prey.id in w.agents                            # prey survives (predation deferred)
     assert hunter.energy == pytest.approx(100.0 - rest)   # hunter gained nothing
+
+
+# --- plant regrowth -----------------------------------------------------------
+
+def _plant_world(plant_params, size=Vector(200.0, 200.0)) -> World:
+    return World(
+        size,
+        Rng(config.DEFAULT_SEED),
+        schema=config.GENOME_SCHEMA,
+        phenotype_params=config.PHENOTYPE_PARAMS,
+        brain_factory=_brain_factory,
+        plant_params=plant_params,
+    )
+
+
+def test_no_regrowth_without_plant_params():
+    w = _world(size=Vector(200.0, 200.0))  # no plant_params
+    w.scatter_plants(5, energy=30.0, body_radius=3.0)
+    w.tick()  # no agents -> nothing eaten; no plant economy -> nothing regrows
+    assert len(w.plants) == 5
+
+
+def test_regrowth_adds_fixed_rate_then_caps():
+    pp = PlantParams(energy=30.0, body_radius=3.0, regen_per_tick=4, max_count=10)
+    w = _plant_world(pp)  # no agents: plants only regrow, never eaten
+    w.tick()
+    assert len(w.plants) == 4
+    w.tick()
+    assert len(w.plants) == 8
+    w.tick()
+    assert len(w.plants) == 10  # room was 2 -> only 2 added
+    w.tick()
+    assert len(w.plants) == 10  # capped
+
+
+def test_regrowth_is_reproducible():
+    pp = PlantParams(energy=30.0, body_radius=3.0, regen_per_tick=4, max_count=100)
+    def run():
+        w = _plant_world(pp)
+        for _ in range(3):
+            w.tick()
+        return [p.position for p in w.plants.values()]
+    assert run() == run()
+
+
+def test_regrowth_replenishes_food_supply_over_time():
+    pp = PlantParams(energy=30.0, body_radius=3.0, regen_per_tick=5, max_count=50)
+    w = _plant_world(pp)
+    assert len(w.plants) == 0
+    for _ in range(5):
+        w.tick()
+    assert len(w.plants) == 25  # 5 per tick, well under cap -> never permanently empty
