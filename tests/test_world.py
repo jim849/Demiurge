@@ -14,6 +14,7 @@ from core.decision.rule_based import RuleBasedBrain
 from core.genome import Genome
 from core.plant import PlantParams
 from core.recording import Recorder
+from core.reproduction.asexual import AsexualReproduction
 from core.rng import Rng
 from core.vector import Vector
 from core.world import AgentSnapshot, PredationParams, World, WorldSnapshot
@@ -823,3 +824,105 @@ def test_regrowth_replenishes_food_supply_over_time():
     for _ in range(5):
         w.tick()
     assert len(w.plants) == 25  # 5 per tick, well under cap -> never permanently empty
+
+
+# --- reproduction -------------------------------------------------------------
+
+class _RestBrain(DecisionMaker):
+    """Always rests: no movement, no eating. Lets a test control energy directly."""
+
+    def decide(self, perception, rng):
+        return MoveAction(direction=Vector(1.0, 0.0), speed_fraction=0.0)
+
+
+def _repro_world(size=_BIG, *, factor=config.OFFSPRING_PLACEMENT_FACTOR) -> World:
+    return World(
+        size,
+        Rng(config.DEFAULT_SEED),
+        schema=config.GENOME_SCHEMA,
+        phenotype_params=config.PHENOTYPE_PARAMS,
+        brain_factory=lambda g: _RestBrain(),
+        reproducer=AsexualReproduction(),
+        offspring_placement_factor=factor,
+    )
+
+
+def _other_than(w, parent):
+    return next(a for a in w.agents.values() if a.id != parent.id)
+
+
+def test_agent_above_threshold_reproduces_conserving_energy():
+    w = _repro_world()
+    parent = w.spawn_agent(_genome(), _ORIGIN, energy=300.0)
+    investment = parent.phenotype.offspring_investment
+    rest = parent.phenotype.resting_cost
+    threshold = parent.phenotype.repro_threshold_energy
+    after_upkeep = 300.0 - rest                 # reproduction runs after metabolism
+    assert after_upkeep >= threshold            # sanity: still eligible post-upkeep
+    w.tick()
+    assert len(w.agents) == 2
+    child = _other_than(w, parent)
+    assert child.energy == pytest.approx(after_upkeep * investment)
+    assert parent.energy == pytest.approx(after_upkeep * (1.0 - investment))
+    # strict transfer: the split itself creates/destroys no energy
+    assert parent.energy + child.energy == pytest.approx(after_upkeep)
+    assert child.generation == parent.generation + 1
+
+
+def test_below_threshold_does_not_reproduce():
+    w = _repro_world()
+    w.spawn_agent(_genome(), _ORIGIN, energy=100.0)  # below the ~125 threshold
+    w.tick()
+    assert len(w.agents) == 1
+
+
+def test_no_reproduction_without_a_reproducer():
+    # Default World has no reproducer -> even a flush agent never splits.
+    w = World(_BIG, Rng(config.DEFAULT_SEED), schema=config.GENOME_SCHEMA,
+              phenotype_params=config.PHENOTYPE_PARAMS,
+              brain_factory=lambda g: _RestBrain())
+    w.spawn_agent(_genome(), _ORIGIN, energy=300.0)
+    w.tick()
+    assert len(w.agents) == 1
+
+
+def test_full_investment_empties_the_parent():
+    w = _repro_world()
+    parent = w.spawn_agent(_genome(offspring_investment=1.0), _ORIGIN, energy=300.0)
+    rest = parent.phenotype.resting_cost
+    w.tick()
+    assert len(w.agents) == 2
+    assert parent.energy == pytest.approx(0.0)          # sacrificial: gave it all
+    child = _other_than(w, parent)
+    assert child.energy == pytest.approx(300.0 - rest)  # child got the whole remainder
+
+
+def test_newborn_pays_no_upkeep_and_is_not_reaped_on_its_birth_tick():
+    w = _repro_world()
+    parent = w.spawn_agent(_genome(offspring_investment=0.0), _ORIGIN, energy=300.0)
+    w.tick()
+    child = _other_than(w, parent)
+    assert child.age == 0                  # born after the metabolism pass
+    assert child.energy == pytest.approx(0.0)  # investment 0 -> born with nothing
+    assert child.id in w.agents            # not reaped this tick despite 0 energy
+
+
+def test_offspring_is_born_near_the_parent():
+    factor = config.OFFSPRING_PLACEMENT_FACTOR
+    w = _repro_world(factor=factor)
+    parent = w.spawn_agent(_genome(), _ORIGIN, energy=300.0)
+    w.tick()
+    child = _other_than(w, parent)
+    max_dist = factor * parent.phenotype.body_radius
+    sep_sq = w.toroidal_delta(parent.position, child.position).length_squared()
+    assert sep_sq <= max_dist * max_dist + 1e-9
+
+
+def test_reproduction_is_deterministic():
+    def run():
+        w = _repro_world()
+        w.spawn_agent(_genome(), _ORIGIN, energy=300.0)
+        w.tick()
+        return sorted((a.generation, round(a.energy, 6), a.position.length_squared())
+                      for a in w.agents.values())
+    assert run() == run()

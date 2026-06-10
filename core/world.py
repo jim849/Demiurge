@@ -44,6 +44,7 @@ from core.genome import ChromosomeSpec, Genome
 from core.phenotype import PhenotypeParams, express
 from core.plant import Plant, PlantParams
 from core.recording import NullRecorder, Recorder
+from core.reproduction.base import Reproducer
 from core.rng import Rng
 from core.vector import Vector
 
@@ -151,6 +152,8 @@ class World:
         "_recorder",
         "_plant_params",
         "_predation_params",
+        "_reproducer",
+        "_offspring_placement_factor",
     )
 
     def __init__(
@@ -164,6 +167,8 @@ class World:
         recorder: Recorder | None = None,
         plant_params: PlantParams | None = None,
         predation_params: PredationParams | None = None,
+        reproducer: Reproducer | None = None,
+        offspring_placement_factor: float = 2.0,
     ) -> None:
         if any(extent <= 0 for extent in size):
             raise ValueError("every world extent must be positive")
@@ -186,6 +191,12 @@ class World:
         self._plant_params = plant_params
         # Predation economy (optional): when None, prey EatActions are ignored.
         self._predation_params = predation_params
+        # Reproduction (optional, iron law 5): when None, agents never reproduce.
+        # The genetics live in the injected strategy; the World owns the trigger,
+        # the (energy-conserving) energy transfer, and offspring placement. The
+        # placement factor's canonical value lives in config (iron law 10).
+        self._reproducer = reproducer
+        self._offspring_placement_factor = offspring_placement_factor
 
     # --- id allocation (World owns the counter, iron law 7) -------------------
 
@@ -440,6 +451,10 @@ class World:
         # Reap the dead.
         self.agents = {aid: a for aid, a in self.agents.items() if a.alive}
 
+        # Reproduce: survivors above their energy threshold split (after metabolism
+        # and reaping, so only the living breed and newborns pay no upkeep this tick).
+        self._resolve_reproduction(tick_rng.spawn("reproduce"))
+
         # Regrow food (fixed rate, capped) so it is reflected in this tick's snapshot.
         self._regrow_plants(tick_rng.spawn("regrow"))
 
@@ -572,6 +587,54 @@ class World:
             meal = prey.energy + pp.body_value_coeff * prey_radius * prey_radius
             winner.add_energy(winner.phenotype.prey_gain * meal)
             prey.mark_dead()
+
+    # --- reproduction ---------------------------------------------------------
+
+    def _resolve_reproduction(self, rng: Rng) -> None:
+        """Split every survivor whose energy reached its reproduction threshold.
+
+        No-op without a reproduction strategy (`reproducer` is None). v1 auto-triggers
+        on `energy >= repro_threshold_energy` (reproduction is not yet a brain action).
+        The split is an **energy-conserving transfer**: the child gets
+        `offspring_investment * parent_energy`, the parent loses exactly that -- no
+        energy is created (unlike predation). High investment can empty the parent
+        (sacrificial K-strategy); near-zero investment yields a non-viable child --
+        both are legitimate, self-judging outcomes, not special-cased.
+
+        The child is born near the parent (a random offset within
+        `offspring_placement_factor * parent body_radius`) to create population
+        viscosity (neighbours tend to be kin -- the substrate for kin selection). It
+        gets a fresh random heading and `generation + 1`. Parents are snapshotted in
+        id order before any birth, so newborns neither reproduce nor are iterated this
+        tick (they first act next tick), keeping the pass deterministic.
+        """
+        if self._reproducer is None:
+            return
+
+        parents = [
+            a for a in self.agents.values()
+            if a.alive and a.energy >= a.phenotype.repro_threshold_energy
+        ]
+        for parent in parents:
+            agent_rng = rng.spawn(f"agent/{parent.id}")
+            child_energy = parent.energy * parent.phenotype.offspring_investment
+            parent.spend_energy(child_energy)  # strict transfer (energy-conserving)
+
+            child_genome = self._reproducer.reproduce(parent.genome, agent_rng.spawn("genome"))
+
+            radius = self._offspring_placement_factor * parent.phenotype.body_radius
+            distance = agent_rng.spawn("dist").uniform(0.0, radius)
+            offset = _random_unit_vector(self.size.dim, agent_rng.spawn("dir")) * distance
+            child_position = self.wrap(parent.position + offset)
+            heading = _random_unit_vector(self.size.dim, agent_rng.spawn("heading"))
+
+            self.spawn_agent(
+                child_genome,
+                child_position,
+                heading=heading,
+                energy=child_energy,
+                generation=parent.generation + 1,
+            )
 
     # --- inspection -----------------------------------------------------------
 

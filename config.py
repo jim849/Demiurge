@@ -127,5 +127,12 @@ PREDATION_PARAMS = PredationParams(
     body_value_coeff=0.3,   # structural meal value = coeff * body_radius**2 (area~mass)
 )
 
+# --- reproduction ------------------------------------------------------------
+# v1 asexual (copy + mutate); the strategy module is wired in by the caller
+# (main.py / tests), not here. This is the one placement knob the World needs:
+# offspring are born within OFFSPRING_PLACEMENT_FACTOR * parent body_radius, kept
+# tight so neighbours tend to be kin (population viscosity -> kin-selection substrate).
+OFFSPRING_PLACEMENT_FACTOR = 2.0
+
 # --- reproducibility ---------------------------------------------------------
 DEFAULT_SEED = 20260609

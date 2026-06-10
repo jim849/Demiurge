@@ -208,10 +208,17 @@ Completion criteria:
   emerge (energy-pyramid losses leave too little up the chain). The route back to
   conservation is recorded as a backlog item ("Energy conservation & decomposer
   loop").
+- `core/reproduction/` (base + asexual copy+mutate) — swappable genetics module
+  (iron law 5), injected into the World like the brain. The World owns the trigger
+  (auto-split at `energy >= repro_threshold_energy`), the **energy-conserving**
+  transfer (child gets `offspring_investment × energy`, parent loses exactly that),
+  and near-parent placement (viscosity). Resolves after metabolism/reaping, so only
+  survivors breed and newborns pay no upkeep their birth tick. Sacrificial
+  (investment→1) and non-viable (investment→0) offspring are left as self-judging
+  outcomes; population is capped only by the energy supply, not a hard limit.
 
 **Still to do for M1:** `main.py` headless smoke run; rendering layer (pygame,
-iron laws 1–4) + click-to-inspect; reproduce/mutate resolution; creator
-console hooks.
+iron laws 1–4) + click-to-inspect; creator console hooks.
 
 ---
 
