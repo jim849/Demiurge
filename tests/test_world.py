@@ -9,13 +9,24 @@ tick is tested later.
 
 import pytest
 
-from core.decision.base import DecisionMaker
+from core.decision.base import DecisionMaker, Perception
 from core.decision.rule_based import RuleBasedBrain
 from core.genome import Genome
 from core.rng import Rng
 from core.vector import Vector
 from core.world import AgentSnapshot, World, WorldSnapshot
 import config
+
+
+def _genome(**overrides) -> Genome:
+    base = {
+        "size": 0.5, "speed": 0.5, "vision_budget": 0.5, "vision_focus": 0.5,
+        "diet": 0.5, "repro_threshold": 0.5, "metabolism": 0.5,
+        "offspring_investment": 0.5,
+        "aggression": 0.5, "fear": 0.5, "exploration": 0.5,
+    }
+    base.update(overrides)
+    return Genome.from_values(config.GENOME_SCHEMA, base)
 
 
 def _brain_factory(genome):
@@ -176,3 +187,136 @@ def test_snapshot_is_immutable():
         snap.tick = 5  # type: ignore[misc]
     with pytest.raises(Exception):
         snap.agents[0].energy = 999.0  # type: ignore[misc]
+
+
+# --- initial heading ----------------------------------------------------------
+
+def test_populate_assigns_unit_headings():
+    w = _world()
+    w.populate(5, initial_energy=10.0)
+    for a in w.agents.values():
+        assert a.heading.length() == pytest.approx(1.0)
+
+
+def test_headings_are_reproducible_for_same_seed():
+    def headings():
+        w = _world()
+        w.populate(4, initial_energy=10.0)
+        return [a.heading for a in w.agents.values()]
+    assert headings() == headings()
+
+
+# --- toroidal delta -----------------------------------------------------------
+
+def test_toroidal_delta_takes_short_way_around():
+    w = _world(size=Vector(100.0, 100.0))
+    # 90 -> 5 is +15 going forward across the seam, not -85 going back.
+    assert w.toroidal_delta(Vector(90.0, 50.0), Vector(5.0, 50.0)) == Vector(15.0, 0.0)
+    assert w.toroidal_delta(Vector(5.0, 50.0), Vector(90.0, 50.0)) == Vector(-15.0, 0.0)
+
+
+# --- perception: range + field of view ---------------------------------------
+
+# A big world so wrap doesn't interfere with the geometry under test.
+_BIG = Vector(10_000.0, 10_000.0)
+_ORIGIN = Vector(5_000.0, 5_000.0)
+
+
+def _two_agent_world(observer_genome, observer_heading, target_offset, target_genome=None):
+    """Spawn an observer at the centre facing `observer_heading`, plus one target
+    at `_ORIGIN + target_offset`. Returns (world, observer, target)."""
+    w = _world(size=_BIG)
+    obs = w.spawn_agent(observer_genome, _ORIGIN, heading=observer_heading)
+    tgt = w.spawn_agent(target_genome or _genome(), _ORIGIN + target_offset)
+    return w, obs, tgt
+
+
+def test_perceive_returns_perception_with_self_state():
+    w, obs, _ = _two_agent_world(_genome(), Vector(1.0, 0.0), Vector(1.0, 0.0))
+    p = w.perceive(obs)
+    assert isinstance(p, Perception)
+    assert p.own_phenotype is obs.phenotype
+    assert p.own_energy == obs.energy
+    assert p.own_heading == obs.heading
+    assert p.nearby_plants == ()
+
+
+def test_perceives_target_directly_ahead_within_range():
+    obs_g = _genome(vision_focus=0.0, vision_budget=1.0)  # panoramic
+    w, obs, tgt = _two_agent_world(obs_g, Vector(1.0, 0.0), Vector(1.0, 0.0))
+    ahead = obs.phenotype.perception_range * 0.5
+    # move target to a known spot inside range, straight ahead
+    w.agents[tgt.id].position = _ORIGIN + Vector(ahead, 0.0)
+    p = w.perceive(obs)
+    assert len(p.nearby_agents) == 1
+    assert p.nearby_agents[0].id == tgt.id
+    assert p.nearby_agents[0].relative_position == Vector(ahead, 0.0)
+
+
+def test_does_not_perceive_beyond_range():
+    obs_g = _genome(vision_focus=0.0, vision_budget=1.0)
+    w, obs, tgt = _two_agent_world(obs_g, Vector(1.0, 0.0), Vector(1.0, 0.0))
+    beyond = obs.phenotype.perception_range * 2.0
+    w.agents[tgt.id].position = _ORIGIN + Vector(beyond, 0.0)
+    assert w.perceive(obs).nearby_agents == ()
+
+
+def test_narrow_cone_excludes_target_to_the_side_and_behind():
+    obs_g = _genome(vision_focus=1.0, vision_budget=1.0)  # telephoto, narrow cone
+    w, obs, _ = _two_agent_world(obs_g, Vector(1.0, 0.0), Vector(1.0, 0.0))
+    r = obs.phenotype.perception_range * 0.5
+    # directly ahead -> seen
+    w.agents[1].position = _ORIGIN + Vector(r, 0.0)
+    assert len(w.perceive(obs).nearby_agents) == 1
+    # 90 degrees to the side -> outside the narrow cone
+    w.agents[1].position = _ORIGIN + Vector(0.0, r)
+    assert w.perceive(obs).nearby_agents == ()
+    # directly behind -> outside
+    w.agents[1].position = _ORIGIN + Vector(-r, 0.0)
+    assert w.perceive(obs).nearby_agents == ()
+
+
+def test_panoramic_sees_in_every_direction():
+    obs_g = _genome(vision_focus=0.0, vision_budget=1.0)  # half-angle = pi
+    w, obs, _ = _two_agent_world(obs_g, Vector(1.0, 0.0), Vector(1.0, 0.0))
+    r = obs.phenotype.perception_range * 0.5
+    for offset in (Vector(r, 0.0), Vector(0.0, r), Vector(-r, 0.0), Vector(0.0, -r)):
+        w.agents[1].position = _ORIGIN + offset
+        assert len(w.perceive(obs).nearby_agents) == 1
+
+
+def test_perceive_excludes_self():
+    w = _world(size=_BIG)
+    obs = w.spawn_agent(_genome(vision_focus=0.0, vision_budget=1.0), _ORIGIN,
+                        heading=Vector(1.0, 0.0))
+    assert w.perceive(obs).nearby_agents == ()
+
+
+def test_perceive_excludes_dead_agents():
+    obs_g = _genome(vision_focus=0.0, vision_budget=1.0)
+    w, obs, tgt = _two_agent_world(obs_g, Vector(1.0, 0.0), Vector(5.0, 0.0))
+    assert len(w.perceive(obs).nearby_agents) == 1
+    w.agents[tgt.id].mark_dead()
+    assert w.perceive(obs).nearby_agents == ()
+
+
+def test_perceived_target_carries_body_attributes():
+    obs_g = _genome(vision_focus=0.0, vision_budget=1.0)
+    tgt_g = _genome(size=0.8, diet=0.9)
+    w, obs, tgt = _two_agent_world(obs_g, Vector(1.0, 0.0), Vector(5.0, 0.0), target_genome=tgt_g)
+    pa = w.perceive(obs).nearby_agents[0]
+    assert pa.size == pytest.approx(0.8)
+    assert pa.diet == pytest.approx(0.9)
+    assert pa.body_radius == pytest.approx(tgt.phenotype.body_radius)
+
+
+def test_perception_uses_toroidal_distance_across_the_seam():
+    w = _world(size=Vector(100.0, 100.0))
+    obs_g = _genome(vision_focus=0.0, vision_budget=1.0)
+    # observer near the right edge, target just across the seam on the left edge
+    obs = w.spawn_agent(obs_g, Vector(98.0, 50.0), heading=Vector(1.0, 0.0))
+    assert obs.phenotype.perception_range > 4.0  # sanity: range covers the gap
+    w.spawn_agent(_genome(), Vector(2.0, 50.0))  # 4 units away across the wrap
+    p = w.perceive(obs)
+    assert len(p.nearby_agents) == 1
+    assert p.nearby_agents[0].relative_position == Vector(4.0, 0.0)

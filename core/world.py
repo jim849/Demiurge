@@ -31,13 +31,25 @@ from dataclasses import dataclass
 from typing import Callable
 
 from core.agent import Agent
-from core.decision.base import DecisionMaker
+from core.decision.base import DecisionMaker, PerceivedAgent, Perception
 from core.genome import ChromosomeSpec, Genome
 from core.phenotype import PhenotypeParams, express
 from core.rng import Rng
 from core.vector import Vector
 
 BrainFactory = Callable[[Genome], DecisionMaker]
+
+
+def _random_unit_vector(dim: int, rng: Rng) -> Vector:
+    """An isotropic random unit vector (Gaussian per component, then normalize).
+
+    Dimension-agnostic. (Mirrors the helper in `decision.rule_based`; kept local to
+    avoid the World depending on a concrete brain module.)
+    """
+    v = Vector(*(rng.gauss(0.0, 1.0) for _ in range(dim)))
+    if v.length_squared() == 0.0:
+        return Vector(*([1.0] + [0.0] * (dim - 1)))  # astronomically unlikely
+    return v.normalized()
 
 
 # --- pure-data snapshots (rendering layer consumes only these) ----------------
@@ -125,6 +137,69 @@ class World:
             comp % extent for comp, extent in zip(position, self.size)
         )
 
+    def toroidal_delta(self, source: Vector, target: Vector) -> Vector:
+        """Shortest displacement from `source` to `target` on the torus.
+
+        Minimum-image convention: on each axis, take whichever of "go forward" or
+        "wrap around the back" is shorter. This is what makes neighbours on the
+        opposite edge count as close.
+        """
+        if source.dim != self.size.dim or target.dim != self.size.dim:
+            raise ValueError("vector dimension does not match world dimension")
+        comps = []
+        for s, t, extent in zip(source, target, self.size):
+            d = (t - s) % extent          # in [0, extent)
+            if d > extent / 2.0:
+                d -= extent               # wrapping backwards is shorter
+            comps.append(d)
+        return Vector.from_iterable(comps)
+
+    # --- perception (sector / cone vision) ------------------------------------
+
+    def perceive(self, agent: Agent) -> Perception:
+        """Gather what `agent` can see this tick into a Perception value object.
+
+        An entity is perceived when it is (a) within `perception_range` by toroidal
+        distance and (b) inside the field of view -- the forward cone defined by the
+        phenotype's `perception_cos_half_angle`. The FOV test is a dot product
+        between the agent's unit heading and the unit direction to the entity, so it
+        is dimension-agnostic (a 2D sector now, a 3D cone later). v1 has no plants.
+        """
+        pheno = agent.phenotype
+        range_sq = pheno.perception_range * pheno.perception_range
+        cos_half = pheno.perception_cos_half_angle
+        heading_unit = agent.heading.normalized()
+
+        seen_agents: list[PerceivedAgent] = []
+        for other in self.agents.values():
+            if other.id == agent.id or not other.alive:
+                continue
+            rel = self.toroidal_delta(agent.position, other.position)
+            dist_sq = rel.length_squared()
+            if dist_sq > range_sq:
+                continue
+            # In contact (same spot) is always visible; otherwise apply the cone.
+            if dist_sq > 0.0:
+                if heading_unit.dot(rel.normalized()) < cos_half:
+                    continue
+            seen_agents.append(
+                PerceivedAgent(
+                    id=other.id,
+                    relative_position=rel,
+                    size=other.genome.get("size"),
+                    diet=other.genome.get("diet"),
+                    body_radius=other.phenotype.body_radius,
+                )
+            )
+
+        return Perception(
+            nearby_agents=tuple(seen_agents),
+            nearby_plants=(),  # no plants in v1
+            own_energy=agent.energy,
+            own_phenotype=pheno,
+            own_heading=agent.heading,
+        )
+
     # --- birth ----------------------------------------------------------------
 
     def spawn_agent(
@@ -132,6 +207,7 @@ class World:
         genome: Genome,
         position: Vector,
         *,
+        heading: Vector | None = None,
         energy: float = 0.0,
         generation: int = 0,
     ) -> Agent:
@@ -144,6 +220,7 @@ class World:
             genome,
             phenotype,
             self.wrap(position),
+            heading=heading,
             energy=energy,
             generation=generation,
             decision_maker=brain,
@@ -167,8 +244,12 @@ class World:
             position = Vector.from_iterable(
                 pos_rng.uniform(0.0, extent) for extent in self.size
             )
+            # A random unit facing so directional vision works from birth; its own
+            # named sub-stream keeps positions stable regardless of this draw.
+            heading = _random_unit_vector(self.size.dim, gen_rng.spawn(f"heading/{i}"))
             self.spawn_agent(
-                genome, position, energy=initial_energy, generation=0
+                genome, position, heading=heading,
+                energy=initial_energy, generation=0,
             )
 
     # --- inspection -----------------------------------------------------------
