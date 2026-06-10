@@ -115,17 +115,17 @@ Note: because appearance reads functional genes, convergent evolution can make u
 
 The brain is a **pure function**: perception in → action out. This input/output interface is fixed now so a future neural network consumes the same inputs and emits the same outputs (decision is a swappable module, iron law 5).
 
-**Perception input** (only within `sense_range`): list of nearby agents (relative position + size), list of nearby plants (relative position), own internal state (current energy).
+**Perception input** (only within `sense_range`): list of nearby agents (relative position + size + **diet**), list of nearby plants (relative position), own internal state (current energy) + own phenotype. Diet is exposed because appearance encodes it (hue = diet), so "read the color to tell a carnivore from a grazer" is an honest, realistic signal — it lets prey flee predators specifically and lets hunters judge a target's danger.
 
 **Action output**: `move(direction, speed_fraction)` OR `eat(target)`. Reproduction is handled separately (auto-trigger v1).
 
 **Arbitration: priority ladder (method A), top-down, first match wins:**
-1. **Flee** — a significantly larger agent in range → move away at max speed. Trigger modulated by `fear` (high fear flees early/far, low fear flees only when close).
-2. **Eat** — an edible target adjacent → eat (plant weighted by `1-diet`; prey weighted by `diet` + size advantage).
-3. **Hunt/forage** — suitable food in range → move toward nearest at cruising speed; prey-vs-plant choice weighted by `diet` and `aggression`.
+1. **Flee** — a *carnivorous, larger* agent (a real predator, judged by size + diet) within a `fear`-scaled distance → move away at full speed. `fear` modulates the **flee distance** (high fear flees while the threat is still far; low fear flees only when it is close); the threat's relative size scales that distance too (bigger threat → flee earlier). v1 flees the **nearest** threat.
+2. **Eat** — an edible target within contact → emit `EatAction(target_id)` (plant weighted by `1-diet`; prey weighted by `diet` + size advantage). Whether it *succeeds* is the world's resolve-phase call, not the brain's.
+3. **Hunt/forage** — suitable food in range → move toward the **nearest** suitable target; prey-vs-plant choice weighted by `diet` and `aggression`. **Chasing live (moving) prey is done at full speed (a sprint); foraging stationary plants is done at cruising speed** — so carnivory is energetically expensive (super-linear move cost), herbivory cheap.
 4. **Wander/rest** — no target → `exploration` decides random walk vs resting to save energy.
 
-Method A chosen for v1 (interpretable, debuggable, personality genes active throughout). Likely upgrade to **method B (utility scoring)** later — swappable without touching core. Reproduction is auto-triggered in v1 but isolated so it can later become a brain-decided action.
+Method A chosen for v1 (interpretable, debuggable, personality genes active throughout). **Deferred refinements (record now, implement later): (a) method B — utility scoring** instead of a fixed ladder, swappable without touching core; **(b) smarter multi-threat / multi-target handling** — e.g. flee a *composite* away-vector from several threats rather than just the nearest, and value-weighted target choice rather than nearest-only. Reproduction is auto-triggered in v1 but isolated so it can later become a brain-decided action.
 
 ### Tick Update Model (finalized in Milestone 0)
 
@@ -246,8 +246,17 @@ predation gated only by a size-advantage threshold. This milestone adds:
   `resting_cost`); a hit-rate penalty (longer reach = harder to connect); or
   speed/agility drag from large appendages. To be decided when this milestone is
   scoped.
-- **Strike hit/miss probability** (optional): a stochastic catch outcome (via the
-  injected RNG) so predation isn't a sure thing once in range.
+- **Graded capture success (replaces v1's hard threshold).** Catch probability
+  becomes a smooth function of the size gap (e.g. sigmoid on predator/prey size
+  ratio): a big advantage ≈ near-certain, a large disadvantage ≈ near-zero but
+  **never exactly zero — a small carnivore still has a small chance at large
+  prey** (the v1 hard threshold forbids this; M6 restores it). The **prey's own
+  diet and size also modulate** the outcome: large or carnivorous prey fight back,
+  lowering success and/or raising the predator's energy cost of the attempt. Uses
+  the injected RNG (reproducible). This also makes fleeing risk-based rather than
+  hard-gated — prey may flee even smaller carnivores, scaled by the actual risk.
+- **Strike hit/miss probability** (optional, folds into the above): a stochastic
+  catch outcome so predation isn't a sure thing once in range.
 - **Handling time + feeding-rate gene.** Eating becomes a multi-tick committed
   action rather than instantaneous; a gene controls feeding speed. Creates a
   vulnerability window (a feeding agent is exposed to ambush) and a real

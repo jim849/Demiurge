@@ -39,11 +39,17 @@ from core.vector import Vector
 
 @dataclass(frozen=True, slots=True)
 class PerceivedAgent:
-    """Another agent as seen by the perceiver: identity, where, how big."""
+    """Another agent as seen by the perceiver: identity, where, how big, what it eats.
+
+    `diet` is the *perceived* agent's own diet (0=herbivore .. 1=carnivore). It is
+    visible because appearance encodes it (hue = diet), an honest signal: prey can
+    tell a predator from a grazer, and a hunter can judge how dangerous a target is.
+    """
 
     id: int
     relative_position: Vector  # target_position - self_position
     size: float
+    diet: float
 
 
 @dataclass(frozen=True, slots=True)
