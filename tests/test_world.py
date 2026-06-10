@@ -432,3 +432,108 @@ def test_recorder_receives_every_tick():
     w.tick()
     w.tick()
     assert rec.ticks == [1, 2, 3]
+
+
+# --- plants: storage, scatter, snapshot --------------------------------------
+
+def test_new_world_has_no_plants():
+    assert _world().plants == {}
+
+
+def test_spawn_plant_registers_and_wraps():
+    w = _world(size=Vector(100.0, 100.0))
+    p = w.spawn_plant(Vector(150.0, -10.0), energy=30.0, body_radius=3.0)
+    assert w.plants[p.id] is p
+    assert p.position == Vector(50.0, 90.0)  # wrapped into the torus
+    assert p.energy == 30.0
+    assert p.body_radius == 3.0
+
+
+def test_plants_and_agents_share_id_space():
+    w = _world()
+    a = w.spawn_agent(_random_genome(), Vector(10.0, 10.0))
+    p = w.spawn_plant(Vector(20.0, 20.0), energy=30.0, body_radius=3.0)
+    assert a.id == 0 and p.id == 1  # one counter across both tables
+
+
+def test_scatter_plants_count_and_bounds():
+    w = _world(size=Vector(100.0, 60.0))
+    w.scatter_plants(40, energy=30.0, body_radius=3.0)
+    assert len(w.plants) == 40
+    for p in w.plants.values():
+        assert 0.0 <= p.position.x < 100.0
+        assert 0.0 <= p.position.y < 60.0
+
+
+def test_scatter_plants_is_reproducible_for_same_seed():
+    def positions():
+        w = _world()
+        w.scatter_plants(8, energy=30.0, body_radius=3.0)
+        return [p.position for p in w.plants.values()]
+    assert positions() == positions()
+
+
+def test_scatter_plants_independent_of_agent_population():
+    # Plant layout must not shift when the agent population changes (separate
+    # named sub-stream). Compare plant positions with and without agents present.
+    w1 = _world()
+    w1.scatter_plants(8, energy=30.0, body_radius=3.0)
+    w2 = _world()
+    w2.populate(20, initial_energy=10.0)
+    w2.scatter_plants(8, energy=30.0, body_radius=3.0)
+    assert [p.position for p in w1.plants.values()] == \
+           [p.position for p in w2.plants.values()]
+
+
+def test_scatter_plants_rejects_negative_count():
+    with pytest.raises(ValueError):
+        _world().scatter_plants(-1, energy=30.0, body_radius=3.0)
+
+
+def test_snapshot_includes_plants():
+    w = _world()
+    w.scatter_plants(3, energy=30.0, body_radius=3.0)
+    snap = w.snapshot()
+    assert len(snap.plants) == 3
+    p = next(iter(w.plants.values()))
+    s = snap.plants[0]
+    assert s.id == p.id
+    assert s.position == p.position
+    assert s.body_radius == p.body_radius
+
+
+# --- plants: perception -------------------------------------------------------
+
+def test_perceives_plant_ahead_within_range():
+    obs_g = _genome(vision_focus=0.0, vision_budget=1.0)  # panoramic
+    w = _world(size=_BIG)
+    obs = w.spawn_agent(obs_g, _ORIGIN, heading=Vector(1.0, 0.0))
+    r = obs.phenotype.perception_range * 0.5
+    plant = w.spawn_plant(_ORIGIN + Vector(r, 0.0), energy=30.0, body_radius=3.0)
+    p = w.perceive(obs)
+    assert len(p.nearby_plants) == 1
+    assert p.nearby_plants[0].id == plant.id
+    assert p.nearby_plants[0].relative_position == Vector(r, 0.0)
+    assert p.nearby_plants[0].body_radius == 3.0
+
+
+def test_does_not_perceive_plant_beyond_range():
+    obs_g = _genome(vision_focus=0.0, vision_budget=1.0)
+    w = _world(size=_BIG)
+    obs = w.spawn_agent(obs_g, _ORIGIN, heading=Vector(1.0, 0.0))
+    beyond = obs.phenotype.perception_range * 2.0
+    w.spawn_plant(_ORIGIN + Vector(beyond, 0.0), energy=30.0, body_radius=3.0)
+    assert w.perceive(obs).nearby_plants == ()
+
+
+def test_narrow_cone_excludes_plant_behind():
+    obs_g = _genome(vision_focus=1.0, vision_budget=1.0)  # narrow cone
+    w = _world(size=_BIG)
+    obs = w.spawn_agent(obs_g, _ORIGIN, heading=Vector(1.0, 0.0))
+    r = obs.phenotype.perception_range * 0.5
+    behind = w.spawn_plant(_ORIGIN + Vector(-r, 0.0), energy=30.0, body_radius=3.0)
+    assert w.perceive(obs).nearby_plants == ()
+    # but a plant straight ahead is seen
+    w.plants.pop(behind.id)
+    w.spawn_plant(_ORIGIN + Vector(r, 0.0), energy=30.0, body_radius=3.0)
+    assert len(w.perceive(obs).nearby_plants) == 1

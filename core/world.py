@@ -37,10 +37,12 @@ from core.decision.base import (
     EatAction,
     MoveAction,
     PerceivedAgent,
+    PerceivedPlant,
     Perception,
 )
 from core.genome import ChromosomeSpec, Genome
 from core.phenotype import PhenotypeParams, express
+from core.plant import Plant
 from core.recording import NullRecorder, Recorder
 from core.rng import Rng
 from core.vector import Vector
@@ -82,12 +84,22 @@ class AgentSnapshot:
 
 
 @dataclass(frozen=True, slots=True)
+class PlantSnapshot:
+    """An immutable readout of one plant for rendering."""
+
+    id: int
+    position: Vector
+    body_radius: float
+
+
+@dataclass(frozen=True, slots=True)
 class WorldSnapshot:
     """An immutable readout of the whole world at one tick."""
 
     tick: int
     size: Vector
     agents: tuple[AgentSnapshot, ...]
+    plants: tuple[PlantSnapshot, ...]
 
 
 # --- the world ----------------------------------------------------------------
@@ -98,6 +110,7 @@ class World:
     __slots__ = (
         "size",
         "agents",
+        "plants",
         "tick_count",
         "_rng",
         "_schema",
@@ -122,7 +135,10 @@ class World:
         self.size = size
         # Keyed by id: O(1) target lookup for EatAction in the resolve phase, and
         # dict preserves insertion (== id) order, keeping iteration deterministic.
+        # Agents and plants share one id space (the same counter) so an
+        # EatAction(target_id) resolves unambiguously to one table or the other.
         self.agents: dict[int, Agent] = {}
+        self.plants: dict[int, Plant] = {}
         self.tick_count = 0
         self._rng = rng
         self._schema = schema
@@ -168,14 +184,36 @@ class World:
 
     # --- perception (sector / cone vision) ------------------------------------
 
+    def _visible_delta(
+        self,
+        observer: Vector,
+        target: Vector,
+        heading_unit: Vector,
+        range_sq: float,
+        cos_half: float,
+    ) -> Vector | None:
+        """Return the relative position of `target` if the observer can see it, else
+        None. Visible = within range AND inside the forward cone.
+
+        The field-of-view test is a dot product between the observer's unit heading
+        and the unit direction to the target, so it is dimension-agnostic (a 2D
+        sector now, a 3D cone later). An entity in contact (same spot) is always
+        visible.
+        """
+        rel = self.toroidal_delta(observer, target)
+        dist_sq = rel.length_squared()
+        if dist_sq > range_sq:
+            return None
+        if dist_sq > 0.0 and heading_unit.dot(rel.normalized()) < cos_half:
+            return None
+        return rel
+
     def perceive(self, agent: Agent) -> Perception:
         """Gather what `agent` can see this tick into a Perception value object.
 
-        An entity is perceived when it is (a) within `perception_range` by toroidal
-        distance and (b) inside the field of view -- the forward cone defined by the
-        phenotype's `perception_cos_half_angle`. The FOV test is a dot product
-        between the agent's unit heading and the unit direction to the entity, so it
-        is dimension-agnostic (a 2D sector now, a 3D cone later). v1 has no plants.
+        An entity is perceived when it is within `perception_range` by toroidal
+        distance and inside the field of view (see `_visible_delta`). Plants and
+        agents are filtered by the same vision; a plant behind the agent is unseen.
         """
         pheno = agent.phenotype
         range_sq = pheno.perception_range * pheno.perception_range
@@ -186,14 +224,11 @@ class World:
         for other in self.agents.values():
             if other.id == agent.id or not other.alive:
                 continue
-            rel = self.toroidal_delta(agent.position, other.position)
-            dist_sq = rel.length_squared()
-            if dist_sq > range_sq:
+            rel = self._visible_delta(
+                agent.position, other.position, heading_unit, range_sq, cos_half
+            )
+            if rel is None:
                 continue
-            # In contact (same spot) is always visible; otherwise apply the cone.
-            if dist_sq > 0.0:
-                if heading_unit.dot(rel.normalized()) < cos_half:
-                    continue
             seen_agents.append(
                 PerceivedAgent(
                     id=other.id,
@@ -204,9 +239,24 @@ class World:
                 )
             )
 
+        seen_plants: list[PerceivedPlant] = []
+        for plant in self.plants.values():
+            rel = self._visible_delta(
+                agent.position, plant.position, heading_unit, range_sq, cos_half
+            )
+            if rel is None:
+                continue
+            seen_plants.append(
+                PerceivedPlant(
+                    id=plant.id,
+                    relative_position=rel,
+                    body_radius=plant.body_radius,
+                )
+            )
+
         return Perception(
             nearby_agents=tuple(seen_agents),
-            nearby_plants=(),  # no plants in v1
+            nearby_plants=tuple(seen_plants),
             own_energy=agent.energy,
             own_phenotype=pheno,
             own_heading=agent.heading,
@@ -263,6 +313,31 @@ class World:
                 genome, position, heading=heading,
                 energy=initial_energy, generation=0,
             )
+
+    # --- plants ---------------------------------------------------------------
+
+    def spawn_plant(self, position: Vector, *, energy: float, body_radius: float) -> Plant:
+        """Create a plant at `position` (wrapped into the torus) and register it.
+        Shares the agent id counter so EatAction targets stay unambiguous."""
+        plant = Plant(self._allocate_id(), self.wrap(position), body_radius, energy)
+        self.plants[plant.id] = plant
+        return plant
+
+    def scatter_plants(self, count: int, *, energy: float, body_radius: float) -> None:
+        """Deterministically scatter `count` plants uniformly at random.
+
+        Uses its own named sub-stream so plant placement is reproducible and
+        independent of how many draws the agent population consumed.
+        """
+        if count < 0:
+            raise ValueError("count cannot be negative")
+        plant_rng = self._rng.spawn("plantgen")
+        for i in range(count):
+            pos_rng = plant_rng.spawn(f"pos/{i}")
+            position = Vector.from_iterable(
+                pos_rng.uniform(0.0, extent) for extent in self.size
+            )
+            self.spawn_plant(position, energy=energy, body_radius=body_radius)
 
     # --- the two-phase tick ---------------------------------------------------
 
@@ -353,7 +428,13 @@ class World:
             )
             for a in self.agents.values()
         )
-        return WorldSnapshot(tick=self.tick_count, size=self.size, agents=agents)
+        plants = tuple(
+            PlantSnapshot(id=p.id, position=p.position, body_radius=p.body_radius)
+            for p in self.plants.values()
+        )
+        return WorldSnapshot(
+            tick=self.tick_count, size=self.size, agents=agents, plants=plants
+        )
 
     def __repr__(self) -> str:
         return (

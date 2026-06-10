@@ -104,5 +104,13 @@ BRAIN_PARAMS = BrainParams(
     cruise_speed_fraction=0.5,       # foraging / wander travel speed (TEMP; see BrainParams)
 )
 
+# --- plants (food) -----------------------------------------------------------
+# Discrete plant entities; energy is the food value transferred (scaled by the
+# eater's herbivory efficiency) when one is consumed whole. Starting points,
+# to be tuned by observation. Regrowth rate / max density arrive with sub-step 3.
+INITIAL_PLANT_COUNT = 400
+PLANT_ENERGY = 30.0        # food value of one plant
+PLANT_BODY_RADIUS = 3.0    # world-space radius (contact = sum of body radii)
+
 # --- reproducibility ---------------------------------------------------------
 DEFAULT_SEED = 20260609
