@@ -102,6 +102,37 @@ class WorldSnapshot:
     plants: tuple[PlantSnapshot, ...]
 
 
+# --- predation economy (world-authoritative) ----------------------------------
+
+@dataclass(frozen=True, slots=True)
+class PredationParams:
+    """Tunable, world-side predation coefficients (iron law 10).
+
+    These belong to the World, the authority on what *physically* happens, and are
+    deliberately separate from the brain's own copy of `predation_size_ratio` (which
+    is only the brain's *belief* about who it can hunt). In v1 both come from the same
+    config number, but keeping two sources lets a future brain misjudge a kill while
+    the world still adjudicates correctly ("brain proposes, world disposes").
+
+    - `size_ratio`: a predator must exceed `size_ratio` times the prey's `size` gene to
+      make the kill.
+    - `body_value_coeff`: a slain prey is worth its energy reserves PLUS structural
+      biomass `body_value_coeff * body_radius**2` (area ~ mass in 2D), so a large prey
+      is a big meal even when starving ("a camel starved to death still outweighs a
+      horse"). The whole meal is then scaled by the predator's carnivory efficiency
+      `prey_gain` -- which, with carn_max > 1, makes meat energy-dense by design.
+    """
+
+    size_ratio: float
+    body_value_coeff: float
+
+    def __post_init__(self) -> None:
+        if self.size_ratio <= 0:
+            raise ValueError("predation size_ratio must be positive")
+        if self.body_value_coeff < 0:
+            raise ValueError("predation body_value_coeff cannot be negative")
+
+
 # --- the world ----------------------------------------------------------------
 
 class World:
@@ -119,6 +150,7 @@ class World:
         "_next_id",
         "_recorder",
         "_plant_params",
+        "_predation_params",
     )
 
     def __init__(
@@ -131,6 +163,7 @@ class World:
         brain_factory: BrainFactory,
         recorder: Recorder | None = None,
         plant_params: PlantParams | None = None,
+        predation_params: PredationParams | None = None,
     ) -> None:
         if any(extent <= 0 for extent in size):
             raise ValueError("every world extent must be positive")
@@ -151,6 +184,8 @@ class World:
         self._recorder = recorder if recorder is not None else NullRecorder()
         # Plant economy (optional): when set, tick() regrows plants each step.
         self._plant_params = plant_params
+        # Predation economy (optional): when None, prey EatActions are ignored.
+        self._predation_params = predation_params
 
     # --- id allocation (World owns the counter, iron law 7) -------------------
 
@@ -412,22 +447,31 @@ class World:
         self._recorder.record_tick(self.snapshot())
 
     def _resolve_actions(self, decisions: list[tuple[int, Action]], resolve_rng: Rng) -> None:
-        """Apply all collected actions: movement is independent per agent; eating is
-        resolved as a group because several agents may target the same food.
+        """Apply all collected actions: eating first, then movement.
 
-        Order is immaterial in v1: an eater does not move and plants are stationary,
-        so contact is unaffected by other agents' moves. (Moving prey arrives with
-        the predation sub-step, which will revisit this.)
+        **Eating resolves before movement, against tick-start positions.** A predator
+        catches the prey it saw in contact at decision time; the prey cannot flee a
+        bite with a move it decided in the *same* (simultaneous) tick. Agents eaten
+        this tick are then skipped by the move loop. (Plant-eaters never move in the
+        tick they eat -- an Action is either a MoveAction or an EatAction -- so this
+        ordering leaves grazing unchanged and only matters for mobile prey.)
         """
+        move_actions: list[tuple[int, MoveAction]] = []
         eat_intents: list[tuple[int, int]] = []  # (eater_id, target_id)
         for agent_id, action in decisions:
-            agent = self.agents[agent_id]
             if isinstance(action, MoveAction):
-                self._resolve_move(agent, action)
+                move_actions.append((agent_id, action))
             elif isinstance(action, EatAction):
                 eat_intents.append((agent_id, action.target_id))
             # Unknown action types are ignored; the brain contract is closed.
+
         self._resolve_eating(eat_intents, resolve_rng)
+
+        for agent_id, action in move_actions:
+            agent = self.agents.get(agent_id)
+            if agent is None or not agent.alive:
+                continue  # eaten this tick -> the dead don't move
+            self._resolve_move(agent, action)
 
     def _resolve_move(self, agent: Agent, action: MoveAction) -> None:
         if action.speed_fraction <= 0.0:
@@ -446,19 +490,34 @@ class World:
         return self.toroidal_delta(agent.position, target_position).length_squared() <= reach * reach
 
     def _resolve_eating(self, eat_intents: list[tuple[int, int]], resolve_rng: Rng) -> None:
-        """Resolve plant grazing. (Prey targets are deferred to the predation sub-step.)
+        """Route every EatAction to its target table and resolve each.
 
         The brain already rolled its *willingness* to eat (B' probability) in the
-        decide phase; the world is authoritative for the *physical* outcome: it
-        re-checks contact and arbitrates conflicts. When several agents reach the
-        same plant in one tick, a fair RNG draw picks one winner (no low-id
-        advantage); the winner gains `plant_gain * plant.energy` and the plant is
-        removed. Losers go hungry this tick.
+        decide phase; the world is authoritative for the *physical* outcome. A target
+        id resolves unambiguously (shared id space) to a plant or an agent; stale ids
+        (the target died/was eaten earlier this tick) are dropped. Grazing resolves
+        before predation, so a prey's final graze merely adds to the reserves its
+        predator then inherits; both draw from independent named sub-streams.
         """
-        eaters_by_plant: dict[int, list[int]] = {}
+        plant_intents: list[tuple[int, int]] = []
+        prey_intents: list[tuple[int, int]] = []
         for eater_id, target_id in eat_intents:
-            if target_id in self.plants:  # ignore prey / stale targets in v1
-                eaters_by_plant.setdefault(target_id, []).append(eater_id)
+            if target_id in self.plants:
+                plant_intents.append((eater_id, target_id))
+            elif target_id in self.agents:
+                prey_intents.append((eater_id, target_id))
+            # else: stale / unknown target -> ignored
+
+        self._resolve_grazing(plant_intents, resolve_rng.spawn("graze"))
+        self._resolve_predation(prey_intents, resolve_rng.spawn("prey"))
+
+    def _resolve_grazing(self, plant_intents: list[tuple[int, int]], rng: Rng) -> None:
+        """Award contested plants. When several agents reach the same plant in one
+        tick, a fair RNG draw picks one winner (no low-id advantage); the winner gains
+        `plant_gain * plant.energy` and the plant is removed. Losers go hungry."""
+        eaters_by_plant: dict[int, list[int]] = {}
+        for eater_id, plant_id in plant_intents:
+            eaters_by_plant.setdefault(plant_id, []).append(eater_id)
 
         for plant_id in sorted(eaters_by_plant):  # deterministic processing order
             plant = self.plants[plant_id]
@@ -468,10 +527,51 @@ class World:
             ]
             if not contenders:
                 continue
-            winner_id = contenders[0] if len(contenders) == 1 else resolve_rng.choice(contenders)
+            winner_id = contenders[0] if len(contenders) == 1 else rng.choice(contenders)
             winner = self.agents[winner_id]
             winner.add_energy(winner.phenotype.plant_gain * plant.energy)
             del self.plants[plant_id]
+
+    def _resolve_predation(self, prey_intents: list[tuple[int, int]], rng: Rng) -> None:
+        """Resolve carnivory. No-op without a predation economy (`predation_params`).
+
+        The world re-verifies what the brain only believed: the hunter must still be
+        alive, big enough (`size > size_ratio * prey.size`), and in contact (at
+        tick-start positions). A prey already eaten this tick is skipped -- no double
+        kill. When several qualified hunters reach one prey, a fair RNG draw picks the
+        winner; it gains `prey_gain * (prey.energy + body_value_coeff * body_radius**2)`
+        and the prey is marked dead (reaped at end of tick).
+        """
+        pp = self._predation_params
+        if pp is None or not prey_intents:
+            return
+
+        hunters_by_prey: dict[int, list[int]] = {}
+        for hunter_id, prey_id in prey_intents:
+            hunters_by_prey.setdefault(prey_id, []).append(hunter_id)
+
+        for prey_id in sorted(hunters_by_prey):  # deterministic processing order
+            prey = self.agents.get(prey_id)
+            if prey is None or not prey.alive:
+                continue  # already eaten this tick -> no double kill
+            prey_size = prey.genome.get("size")
+            prey_radius = prey.phenotype.body_radius
+            contenders = []
+            for hid in hunters_by_prey[prey_id]:
+                hunter = self.agents.get(hid)
+                if hunter is None or not hunter.alive:
+                    continue  # a hunter that was itself eaten this tick can't feed
+                if hunter.genome.get("size") <= pp.size_ratio * prey_size:
+                    continue  # not enough of a size advantage
+                if self._in_contact(hunter, prey.position, prey_radius):
+                    contenders.append(hid)
+            if not contenders:
+                continue
+            winner_id = contenders[0] if len(contenders) == 1 else rng.choice(contenders)
+            winner = self.agents[winner_id]
+            meal = prey.energy + pp.body_value_coeff * prey_radius * prey_radius
+            winner.add_energy(winner.phenotype.prey_gain * meal)
+            prey.mark_dead()
 
     # --- inspection -----------------------------------------------------------
 

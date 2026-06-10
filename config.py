@@ -17,6 +17,7 @@ from core.decision.rule_based import BrainParams
 from core.genome import ChromosomeSpec, GeneSpec
 from core.phenotype import PhenotypeParams
 from core.plant import PlantParams
+from core.world import PredationParams
 
 # --- mutation defaults -------------------------------------------------------
 # Kept small for stability (large mutation = chaotic, never converges).
@@ -115,6 +116,15 @@ PLANT_PARAMS = PlantParams(
     body_radius=3.0,    # world-space radius (contact = sum of body radii)
     regen_per_tick=4,   # new plants scattered each tick (fixed-rate regrowth)
     max_count=600,      # hard cap on living plants (regrowth stops here)
+)
+
+# --- predation (world-authoritative) -----------------------------------------
+# The World's own copy of the rules it uses to ADJUDICATE a kill, deliberately
+# separate from the brain's belief (BRAIN_PARAMS.predation_size_ratio): the brain
+# proposes, the world disposes. In v1 size_ratio matches the brain's value.
+PREDATION_PARAMS = PredationParams(
+    size_ratio=1.2,         # predator size must exceed 1.2x the prey's size to kill
+    body_value_coeff=0.3,   # structural meal value = coeff * body_radius**2 (area~mass)
 )
 
 # --- reproducibility ---------------------------------------------------------

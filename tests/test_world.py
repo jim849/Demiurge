@@ -16,7 +16,7 @@ from core.plant import PlantParams
 from core.recording import Recorder
 from core.rng import Rng
 from core.vector import Vector
-from core.world import AgentSnapshot, World, WorldSnapshot
+from core.world import AgentSnapshot, PredationParams, World, WorldSnapshot
 import config
 
 
@@ -626,23 +626,151 @@ def test_omnivore_gains_less_than_herbivore_from_same_plant():
     assert delta(0.5) > 0.0
 
 
-def test_eating_a_prey_target_is_deferred_no_consumption():
-    # An EatAction whose target is an agent (not a plant) is ignored in v1.
-    class _PreyEater(DecisionMaker):
-        def decide(self, perception, rng):
-            if perception.nearby_agents:
-                return EatAction(target_id=perception.nearby_agents[0].id)
-            return MoveAction(direction=Vector(1.0, 0.0), speed_fraction=0.0)
+# --- PredationParams ----------------------------------------------------------
 
-    w = World(Vector(1000.0, 1000.0), Rng(config.DEFAULT_SEED), schema=config.GENOME_SCHEMA,
-              phenotype_params=config.PHENOTYPE_PARAMS, brain_factory=lambda g: _PreyEater())
-    hunter = w.spawn_agent(_genome(diet=1.0, vision_focus=0.0, vision_budget=1.0),
-                           _ORIGIN, heading=Vector(1.0, 0.0), energy=100.0)
-    prey = w.spawn_agent(_genome(size=0.2), _ORIGIN + Vector(4.0, 0.0), energy=100.0)
+def test_predation_params_sets_fields():
+    pp = PredationParams(size_ratio=1.2, body_value_coeff=0.3)
+    assert pp.size_ratio == 1.2
+    assert pp.body_value_coeff == 0.3
+
+
+@pytest.mark.parametrize("kwargs", [
+    dict(size_ratio=0.0, body_value_coeff=0.3),    # ratio must be positive
+    dict(size_ratio=-1.0, body_value_coeff=0.3),
+    dict(size_ratio=1.2, body_value_coeff=-0.1),   # coeff may be 0 but not negative
+])
+def test_predation_params_validates(kwargs):
+    with pytest.raises(ValueError):
+        PredationParams(**kwargs)
+
+
+# --- predation: carnivores eating prey ---------------------------------------
+
+class _PreyEaterBrain(DecisionMaker):
+    """Targets the smallest perceived agent (its best prey); rests if none seen.
+
+    Picking the smallest body keeps the test brain from wasting its bite on a
+    same-size rival it could never kill -- it goes for the most plausible prey.
+    """
+
+    def decide(self, perception, rng):
+        if perception.nearby_agents:
+            target = min(perception.nearby_agents, key=lambda a: a.body_radius)
+            return EatAction(target_id=target.id)
+        return MoveAction(direction=Vector(1.0, 0.0), speed_fraction=0.0)
+
+
+def _hunter_world(size=_BIG, *, predation=True) -> World:
+    return World(
+        size,
+        Rng(config.DEFAULT_SEED),
+        schema=config.GENOME_SCHEMA,
+        phenotype_params=config.PHENOTYPE_PARAMS,
+        brain_factory=lambda g: _PreyEaterBrain(),
+        predation_params=config.PREDATION_PARAMS if predation else None,
+    )
+
+
+# a big carnivore that both sees (panoramic) and digests (diet=1) its prey
+_HUNT = dict(size=0.8, diet=1.0, vision_focus=0.0, vision_budget=1.0)
+
+
+def test_carnivore_eats_adjacent_prey_and_gains_energy():
+    w = _hunter_world()
+    hunter = w.spawn_agent(_genome(**_HUNT), _ORIGIN, heading=Vector(1.0, 0.0), energy=100.0)
+    prey = w.spawn_agent(_genome(size=0.2, diet=0.0), _ORIGIN + Vector(4.0, 0.0), energy=80.0)
+    coeff = config.PREDATION_PARAMS.body_value_coeff
+    meal = 80.0 + coeff * prey.phenotype.body_radius ** 2   # reserves + structural biomass
+    gain = hunter.phenotype.prey_gain * meal
     rest = hunter.phenotype.resting_cost
     w.tick()
-    assert prey.id in w.agents                            # prey survives (predation deferred)
-    assert hunter.energy == pytest.approx(100.0 - rest)   # hunter gained nothing
+    assert prey.id not in w.agents                          # killed and reaped
+    assert hunter.energy == pytest.approx(100.0 + gain - rest)
+
+
+def test_predation_requires_size_advantage():
+    w = _hunter_world()
+    # hunter only marginally bigger: 0.5 is not > 1.2 * 0.45, so no kill
+    hunter = w.spawn_agent(_genome(size=0.5, diet=1.0, vision_focus=0.0, vision_budget=1.0),
+                           _ORIGIN, heading=Vector(1.0, 0.0), energy=100.0)
+    prey = w.spawn_agent(_genome(size=0.45, diet=0.0), _ORIGIN + Vector(4.0, 0.0), energy=80.0)
+    rest = hunter.phenotype.resting_cost
+    w.tick()
+    assert prey.id in w.agents                              # survives: edge too small
+    assert hunter.energy == pytest.approx(100.0 - rest)
+
+
+def test_predation_requires_contact_world_is_authoritative():
+    w = _hunter_world()
+    hunter = w.spawn_agent(_genome(**_HUNT), _ORIGIN, heading=Vector(1.0, 0.0), energy=100.0)
+    # visible (within range) but well beyond reach (8 + 2 = 10) -> brain still bites
+    prey = w.spawn_agent(_genome(size=0.2, diet=0.0), _ORIGIN + Vector(20.0, 0.0), energy=80.0)
+    rest = hunter.phenotype.resting_cost
+    w.tick()
+    assert prey.id in w.agents                              # not eaten: out of contact
+    assert hunter.energy == pytest.approx(100.0 - rest)
+
+
+def test_predation_disabled_without_params():
+    # With no predation economy, prey EatActions are ignored (prey survives).
+    w = _hunter_world(predation=False)
+    hunter = w.spawn_agent(_genome(**_HUNT), _ORIGIN, heading=Vector(1.0, 0.0), energy=100.0)
+    prey = w.spawn_agent(_genome(size=0.2, diet=0.0), _ORIGIN + Vector(4.0, 0.0), energy=80.0)
+    rest = hunter.phenotype.resting_cost
+    w.tick()
+    assert prey.id in w.agents
+    assert hunter.energy == pytest.approx(100.0 - rest)
+
+
+def test_meal_value_includes_prey_body_not_just_energy():
+    # "A camel starved to death still outweighs a horse": a nearly-empty but large
+    # prey still yields a substantial meal -- the structural term dominates.
+    w = _hunter_world()
+    hunter = w.spawn_agent(_genome(size=1.0, diet=1.0, vision_focus=0.0, vision_budget=1.0),
+                           _ORIGIN, heading=Vector(1.0, 0.0), energy=100.0)
+    prey = w.spawn_agent(_genome(size=0.6, diet=0.0), _ORIGIN + Vector(3.0, 0.0), energy=0.5)
+    coeff = config.PREDATION_PARAMS.body_value_coeff
+    structural = coeff * prey.phenotype.body_radius ** 2
+    gain = hunter.phenotype.prey_gain * (0.5 + structural)
+    rest = hunter.phenotype.resting_cost
+    w.tick()
+    assert prey.id not in w.agents
+    assert hunter.energy == pytest.approx(100.0 + gain - rest)
+    assert structural > 0.5                                 # structure beats the empty reserves
+
+
+def test_contested_prey_has_one_winner_reproducible():
+    def run():
+        w = _hunter_world()
+        # two big hunters flanking one small prey; both see and reach it
+        w.spawn_agent(_genome(**_HUNT), _ORIGIN + Vector(-4.0, 0.0), heading=Vector(1.0, 0.0), energy=100.0)
+        w.spawn_agent(_genome(**_HUNT), _ORIGIN + Vector(4.0, 0.0), heading=Vector(-1.0, 0.0), energy=100.0)
+        w.spawn_agent(_genome(size=0.2, diet=0.0), _ORIGIN, energy=80.0)
+        w.tick()
+        return sorted(a.energy for a in w.agents.values())
+    first = run()
+    assert first == run()                                   # reproducible winner
+    assert len(first) == 2                                  # prey killed and reaped
+    assert first[0] != pytest.approx(first[1])              # one fed, one went hungry
+
+
+def test_prey_cannot_flee_within_the_same_tick():
+    # Eat-before-move: a prey that sprints away is still caught, because contact is
+    # judged at tick-start positions.
+    class _Fleer(DecisionMaker):
+        def decide(self, perception, rng):
+            return MoveAction(direction=Vector(1.0, 0.0), speed_fraction=1.0)
+
+    def factory(genome):
+        return _PreyEaterBrain() if genome.get("diet") >= 0.5 else _Fleer()
+
+    w = World(_BIG, Rng(config.DEFAULT_SEED), schema=config.GENOME_SCHEMA,
+              phenotype_params=config.PHENOTYPE_PARAMS, brain_factory=factory,
+              predation_params=config.PREDATION_PARAMS)
+    hunter = w.spawn_agent(_genome(**_HUNT), _ORIGIN, heading=Vector(1.0, 0.0), energy=100.0)
+    prey = w.spawn_agent(_genome(size=0.2, diet=0.0), _ORIGIN + Vector(4.0, 0.0), energy=80.0)
+    w.tick()
+    assert prey.id not in w.agents                          # caught despite fleeing
 
 
 # --- plant regrowth -----------------------------------------------------------
