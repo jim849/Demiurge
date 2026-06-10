@@ -307,8 +307,12 @@ on M2/M3/M6 and logically follows them.
 Today the only inter-agent interactions are predation and fleeing (antagonistic);
 the one cooperation already present is **parental care** via `offspring_investment`
 (kin investment). New cooperative *primitives* to add: energy-sharing, a
-signal/alarm action (new perception channel), group-hunt payoff, and kin-aware
-restraint ("don't eat my kind"). Layered by ease of emergence:
+**costly** signal/alarm action (a new perception channel), group-hunt payoff, and
+kin-aware restraint ("don't eat my kind"). The alarm action **must carry a cost** —
+either raised self predation-risk from revealing position, or an energy cost (like
+an insect spending to release a pheromone) — otherwise "everyone always signals" is
+a trivial solution and there is no free-rider dilemma to study. Layered by ease of
+emergence:
 
 - **Group hunting (by-product mutualism, easiest):** prey too big for one becomes
   catchable when several co-attack; immediate mutual food payoff. Hooks into M6
@@ -316,10 +320,16 @@ restraint ("don't eat my kind"). Layered by ease of emergence:
 - **Selfish herd / anti-predator grouping:** if clustering dilutes individual
   predation risk, a "approach conspecifics" behavior is selected with zero altruism
   — flocks/herds emerge (looks cooperative, is self-interested).
-- **Kin-selected altruism:** with the M3 lineage marker, a greenbeard-style "help
-  those whose marker matches mine" gene lets food-sharing / not-eating-kin emerge.
-- **Reciprocity + signaling (hardest):** alarm calls, recruitment signals; needs
-  partner memory, a fit for the M2 NN brain.
+- **Kin-selected altruism (incl. the easier alarm-call route):** with the M3
+  lineage marker, a greenbeard-style "help those whose marker matches mine" gene
+  lets food-sharing, not-eating-kin, and **alarm-calling to kin** emerge — the
+  costly warning pays off by saving relatives who carry the caller's genes.
+  Reachable *without* the NN brain (no partner memory needed), so this is the
+  easier of the two routes to alarm signaling.
+- **Reciprocity + signaling (hardest):** alarm/recruitment signals to *non-kin*,
+  sustained by "warn those who warn me"; needs partner memory, a fit for the M2 NN
+  brain. So alarm calls span two routes — kin selection (above) and reciprocity
+  (here) — not only this hardest one.
 
 **Hypothesis to observe (from project discussion):** once sexual reproduction makes
 fitness depend on *mate availability* (an Allee effect — too few nearby
