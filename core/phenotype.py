@@ -16,13 +16,17 @@ Design decisions (see PLAN.md, Milestone 1):
 Trade-offs encoded (so niches can emerge rather than one super-strategy winning):
 - moving costs energy super-linearly in speed (sprinting starves you);
 - bigger bodies cost more to move and to maintain (resting metabolism);
-- wider perception costs resting energy;
+- vision is a fixed-budget trade-off: a given visual investment can be spread
+  wide (panoramic, short range -- prey eyes) or concentrated (narrow, long range
+  -- predator eyes), but not both; only the total budget costs energy, so an
+  agent cannot be cheaply wide AND far;
 - diet is a single axis: specializing in plants OR prey, never both (carnivory
   has a higher peak yield but you can't also be a good herbivore).
 """
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 from core.genome import Genome
@@ -40,11 +44,16 @@ class PhenotypeParams:
     # Body
     body_radius_unit: float      # world-space body radius at size = 1 (drives contact + drawing)
 
-    # Metabolism / perception
+    # Metabolism
     base_rest: float             # baseline resting drain per tick
     metab_cost_coeff: float      # resting drain from metabolism gene, scaled by size
-    sense_rest_coeff: float      # resting drain from wider perception
-    sense_unit: float            # perception radius at sense_range = 1
+
+    # Vision (fixed-budget trade-off: spread wide OR reach far, only budget costs)
+    vision_cost_coeff: float       # resting drain per unit visual budget (linear)
+    vision_half_angle_min: float   # cone half-angle (radians) at focus = 1 (narrow)
+    vision_half_angle_max: float   # cone half-angle (radians) at focus = 0 (panoramic)
+    vision_range_unit: float       # range scale (world units)
+    vision_range_exponent: float   # range grows as (budget / spread) ** this
 
     # Reproduction
     repro_min: float             # energy threshold at repro_threshold gene = 0
@@ -64,7 +73,9 @@ class Phenotype:
     size: float
     max_speed: float
     body_radius: float
-    perception_radius: float
+    perception_range: float          # how far it can see (world units)
+    perception_half_angle: float     # cone half-angle (radians); >= pi means panoramic
+    perception_cos_half_angle: float # precomputed cos(half_angle) for the visibility test
     resting_cost: float
     repro_threshold_energy: float
     offspring_investment: float
@@ -86,7 +97,8 @@ def express(genome: Genome, params: PhenotypeParams) -> Phenotype:
     """Translate a genome's abstract gene values into a concrete Phenotype."""
     size = genome.get("size")
     speed = genome.get("speed")
-    sense = genome.get("sense_range")
+    vision_budget = genome.get("vision_budget")
+    vision_focus = genome.get("vision_focus")
     diet = genome.get("diet")
     repro_threshold = genome.get("repro_threshold")
     metabolism = genome.get("metabolism")
@@ -101,14 +113,25 @@ def express(genome: Genome, params: PhenotypeParams) -> Phenotype:
     # (v1 contact = sum of two radii) and rendering. Bigger body = larger reach.
     body_radius = params.body_radius_unit * size
 
-    # Perception radius (its energy cost is folded into resting metabolism below).
-    perception_radius = params.sense_unit * sense
+    # Vision: a fixed visual budget can be spread wide (panoramic, short range)
+    # or concentrated (narrow, long range), but not both. `vision_focus` sets the
+    # cone half-angle (focus=0 -> widest, focus=1 -> narrowest); the same budget
+    # spread over a narrower cone gives a higher "receptor density", which reaches
+    # farther. Reshaping the field is free -- only the total budget costs energy.
+    half_angle = params.vision_half_angle_min + (1.0 - vision_focus) * (
+        params.vision_half_angle_max - params.vision_half_angle_min
+    )
+    spread = half_angle / params.vision_half_angle_max  # in (0, 1], 1 at panoramic
+    density = vision_budget / spread
+    perception_range = params.vision_range_unit * (density ** params.vision_range_exponent)
+    perception_cos_half_angle = math.cos(half_angle)
 
-    # Resting metabolism: bigger + higher-metabolism + wider perception all drain more.
+    # Resting metabolism: bigger + higher-metabolism + larger visual budget drain
+    # more. Vision cost is linear in budget only (its SHAPE is free).
     resting_cost = (
         params.base_rest
         + params.metab_cost_coeff * metabolism * size
-        + params.sense_rest_coeff * sense
+        + params.vision_cost_coeff * vision_budget
     )
 
     # Reproduction threshold: map normalized gene to a real energy amount.
@@ -131,7 +154,9 @@ def express(genome: Genome, params: PhenotypeParams) -> Phenotype:
         size=size,
         max_speed=max_speed,
         body_radius=body_radius,
-        perception_radius=perception_radius,
+        perception_range=perception_range,
+        perception_half_angle=half_angle,
+        perception_cos_half_angle=perception_cos_half_angle,
         resting_cost=resting_cost,
         repro_threshold_energy=repro_threshold_energy,
         offspring_investment=offspring_investment,

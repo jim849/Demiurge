@@ -11,6 +11,8 @@ phenotype.py, not this schema.
 
 from __future__ import annotations
 
+import math
+
 from core.decision.rule_based import BrainParams
 from core.genome import ChromosomeSpec, GeneSpec
 from core.phenotype import PhenotypeParams
@@ -23,9 +25,16 @@ _LIFE_STEP = 0.03
 _BRAIN_STEP = 0.05
 _MUT_PROB = 0.10  # per-gene, per-reproduction probability
 
-# --- genome schema: 10 genes across 3 function-grouped chromosomes -----------
+# --- genome schema: 11 genes across 3 function-grouped chromosomes -----------
 # Chromosome grouping is itself a (future) research knob; size+speed are placed
 # on the same chromosome so they are linked by default once recombination exists.
+#
+# Vision is two genes (a fixed-budget trade-off, not two free abilities):
+#   vision_budget = total visual investment (its energy cost is linear);
+#   vision_focus  = how that budget is spread -- 0 = panoramic & short-range
+#                   (prey eyes), 1 = narrow & long-range (predator eyes).
+# Reshaping the field is free; only total budget costs. So an agent CANNOT be
+# cheaply wide AND far (see phenotype.py for the curve).
 
 GENOME_SCHEMA: tuple[ChromosomeSpec, ...] = (
     ChromosomeSpec(
@@ -33,7 +42,8 @@ GENOME_SCHEMA: tuple[ChromosomeSpec, ...] = (
         genes=(
             GeneSpec("size", 0.1, 1.0, _BODY_STEP, _MUT_PROB),
             GeneSpec("speed", 0.1, 1.0, _BODY_STEP, _MUT_PROB),
-            GeneSpec("sense_range", 0.1, 1.0, _BODY_STEP, _MUT_PROB),
+            GeneSpec("vision_budget", 0.1, 1.0, _BODY_STEP, _MUT_PROB),
+            GeneSpec("vision_focus", 0.0, 1.0, _BODY_STEP, _MUT_PROB),
         ),
     ),
     ChromosomeSpec(
@@ -65,11 +75,15 @@ PHENOTYPE_PARAMS = PhenotypeParams(
     speed_cost_exponent=2.0,
     # Body: world-space radius at size=1 (contact = sum of radii; also the draw size)
     body_radius_unit=10.0,
-    # Metabolism / perception
+    # Metabolism
     base_rest=0.1,
     metab_cost_coeff=0.5,
-    sense_rest_coeff=0.3,
-    sense_unit=100.0,
+    # Vision (fixed-budget trade-off; see phenotype.express)
+    vision_cost_coeff=0.3,        # resting drain per unit visual budget (linear)
+    vision_half_angle_min=0.25,   # radians; narrowest cone half-angle (focus=1, ~28° FOV)
+    vision_half_angle_max=math.pi,  # radians; widest (focus=0, full panoramic)
+    vision_range_unit=60.0,       # range scale (world units)
+    vision_range_exponent=0.5,    # range grows as density**this; 0.5 = sqrt (gentle)
     # Reproduction
     repro_min=50.0,
     repro_max=200.0,

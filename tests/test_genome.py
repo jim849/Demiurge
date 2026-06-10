@@ -151,15 +151,15 @@ def test_nested_dict_mirrors_structure():
 
 # --- real config schema sanity ----------------------------------------------
 
-def test_config_schema_builds_with_ten_genes():
+def test_config_schema_builds_with_all_genes():
     g = Genome.random(config.GENOME_SCHEMA, Rng(config.DEFAULT_SEED))
     expected = {
-        "size", "speed", "sense_range",
+        "size", "speed", "vision_budget", "vision_focus",
         "diet", "repro_threshold", "metabolism", "offspring_investment",
         "aggression", "fear", "exploration",
     }
     assert set(g.gene_names()) == expected
-    assert len(g.gene_names()) == 10
+    assert len(g.gene_names()) == 11
 
 
 def test_config_schema_chromosome_grouping():

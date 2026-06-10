@@ -21,8 +21,11 @@ _P = PhenotypeParams(
     body_radius_unit=10.0,
     base_rest=0.0,
     metab_cost_coeff=1.0,
-    sense_rest_coeff=1.0,
-    sense_unit=100.0,
+    vision_cost_coeff=1.0,
+    vision_half_angle_min=0.25,
+    vision_half_angle_max=math.pi,
+    vision_range_unit=100.0,
+    vision_range_exponent=0.5,
     repro_min=50.0,
     repro_max=150.0,
     herb_max=1.0,
@@ -35,7 +38,7 @@ _P = PhenotypeParams(
 def _genome(**overrides) -> Genome:
     """Build a full-schema genome with given gene values (defaults to mid-range)."""
     base = {
-        "size": 0.5, "speed": 0.5, "sense_range": 0.5,
+        "size": 0.5, "speed": 0.5, "vision_budget": 0.5, "vision_focus": 0.5,
         "diet": 0.5, "repro_threshold": 0.5, "metabolism": 0.5,
         "offspring_investment": 0.5,
         "aggression": 0.5, "fear": 0.5, "exploration": 0.5,
@@ -58,9 +61,33 @@ def test_max_speed_is_size_neutral_in_v1():
     assert small.max_speed == big.max_speed
 
 
-def test_perception_radius_tracks_sense_gene():
-    p = express(_genome(sense_range=0.3), _P)
-    assert p.perception_radius == pytest.approx(30.0)
+def test_panoramic_focus_gives_full_circle_field_of_view():
+    # focus=0 -> half-angle = max (pi) -> cos(pi) = -1 -> every direction visible.
+    p = express(_genome(vision_focus=0.0), _P)
+    assert p.perception_half_angle == pytest.approx(math.pi)
+    assert p.perception_cos_half_angle == pytest.approx(-1.0)
+
+
+def test_higher_focus_narrows_the_cone():
+    wide = express(_genome(vision_focus=0.2), _P)
+    narrow = express(_genome(vision_focus=0.9), _P)
+    assert narrow.perception_half_angle < wide.perception_half_angle
+
+
+def test_concentrating_the_same_budget_reaches_farther():
+    # Same visual budget, narrower focus -> higher receptor density -> longer range.
+    wide = express(_genome(vision_budget=0.5, vision_focus=0.0), _P)
+    narrow = express(_genome(vision_budget=0.5, vision_focus=1.0), _P)
+    assert narrow.perception_range > wide.perception_range
+
+
+def test_cannot_be_cheaply_wide_and_far():
+    # A panoramic prey and a telephoto predator on the SAME budget pay the SAME
+    # resting cost, yet the predator out-ranges the wide-eyed prey.
+    prey = express(_genome(vision_budget=0.5, vision_focus=0.0), _P)
+    predator = express(_genome(vision_budget=0.5, vision_focus=1.0), _P)
+    assert prey.resting_cost == pytest.approx(predator.resting_cost)
+    assert predator.perception_range > prey.perception_range
 
 
 def test_body_radius_proportional_to_size_gene():
@@ -85,16 +112,23 @@ def test_bigger_body_costs_more_to_move():
 
 
 def test_bigger_and_higher_metabolism_drains_more_at_rest():
-    # Hold perception equal so we isolate the size*metabolism contribution.
-    lean = express(_genome(size=0.2, metabolism=0.2, sense_range=0.1), _P)
-    heavy = express(_genome(size=0.9, metabolism=0.9, sense_range=0.1), _P)
+    # Hold visual budget equal so we isolate the size*metabolism contribution.
+    lean = express(_genome(size=0.2, metabolism=0.2, vision_budget=0.1), _P)
+    heavy = express(_genome(size=0.9, metabolism=0.9, vision_budget=0.1), _P)
     assert heavy.resting_cost > lean.resting_cost
 
 
-def test_wider_perception_costs_resting_energy():
-    narrow = express(_genome(sense_range=0.1), _P)
-    wide = express(_genome(sense_range=0.9), _P)
-    assert wide.resting_cost > narrow.resting_cost
+def test_larger_visual_budget_costs_resting_energy():
+    small = express(_genome(vision_budget=0.1), _P)
+    large = express(_genome(vision_budget=0.9), _P)
+    assert large.resting_cost > small.resting_cost
+
+
+def test_vision_cost_is_independent_of_focus():
+    # Reshaping the field is free: only total budget costs.
+    a = express(_genome(vision_budget=0.5, vision_focus=0.1), _P)
+    b = express(_genome(vision_budget=0.5, vision_focus=0.9), _P)
+    assert a.resting_cost == pytest.approx(b.resting_cost)
 
 
 # --- diet single-axis trade-off ----------------------------------------------

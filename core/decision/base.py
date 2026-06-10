@@ -68,7 +68,7 @@ class PerceivedPlant:
 
 @dataclass(frozen=True, slots=True)
 class Perception:
-    """Everything a brain is allowed to see this tick (within its sense range).
+    """Everything a brain is allowed to see this tick (within its field of view).
 
     Holds only what the brain needs: nearby entities (relative), own energy,
     own phenotype (so it can reason about its own max_speed / size / reach when

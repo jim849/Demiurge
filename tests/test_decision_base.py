@@ -25,7 +25,7 @@ import config
 
 def _phenotype():
     g = Genome.from_values(config.GENOME_SCHEMA, {
-        "size": 0.5, "speed": 0.5, "sense_range": 0.5,
+        "size": 0.5, "speed": 0.5, "vision_budget": 0.5, "vision_focus": 0.5,
         "diet": 0.5, "repro_threshold": 0.5, "metabolism": 0.5,
         "offspring_investment": 0.5,
         "aggression": 0.5, "fear": 0.5, "exploration": 0.5,
