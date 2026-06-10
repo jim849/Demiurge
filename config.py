@@ -17,6 +17,7 @@ from core.decision.rule_based import BrainParams
 from core.genome import ChromosomeSpec, GeneSpec
 from core.phenotype import PhenotypeParams
 from core.plant import PlantParams
+from core.vector import Vector
 from core.world import PredationParams
 
 # --- mutation defaults -------------------------------------------------------
@@ -133,6 +134,15 @@ PREDATION_PARAMS = PredationParams(
 # offspring are born within OFFSPRING_PLACEMENT_FACTOR * parent body_radius, kept
 # tight so neighbours tend to be kin (population viscosity -> kin-selection substrate).
 OFFSPRING_PLACEMENT_FACTOR = 2.0
+
+# --- world & initial population ----------------------------------------------
+# Starting points, to be tuned by observation (the headless smoke run exists to
+# watch these dynamics). The world is a toroidal square; INITIAL_AGENT_ENERGY is
+# sized so a mid-genome agent survives long enough to find food but cannot breed
+# without eating (resting ~0.4/tick, repro threshold mid ~125; a plant is 30).
+WORLD_SIZE = Vector(1000.0, 1000.0)
+INITIAL_AGENT_COUNT = 300
+INITIAL_AGENT_ENERGY = 80.0
 
 # --- reproducibility ---------------------------------------------------------
 DEFAULT_SEED = 20260609
