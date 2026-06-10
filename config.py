@@ -144,5 +144,12 @@ WORLD_SIZE = Vector(1000.0, 1000.0)
 INITIAL_AGENT_COUNT = 300
 INITIAL_AGENT_ENERGY = 80.0
 
+# --- perception performance --------------------------------------------------
+# Uniform-grid cell edge for neighbour queries. A PURE PERFORMANCE knob: it
+# changes how fast perception runs, never what an agent sees (the exact range +
+# field-of-view test is authoritative). At WORLD_SIZE 1000 this gives a 10x10
+# grid (~9 entities/cell); a typical agent then scans a 3x3 block.
+SPATIAL_CELL_SIZE = 100.0
+
 # --- reproducibility ---------------------------------------------------------
 DEFAULT_SEED = 20260609

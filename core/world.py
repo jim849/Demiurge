@@ -46,6 +46,7 @@ from core.plant import Plant, PlantParams
 from core.recording import NullRecorder, Recorder
 from core.reproduction.base import Reproducer
 from core.rng import Rng
+from core.spatial import UniformGrid
 from core.vector import Vector
 
 BrainFactory = Callable[[Genome], DecisionMaker]
@@ -154,6 +155,7 @@ class World:
         "_predation_params",
         "_reproducer",
         "_offspring_placement_factor",
+        "_spatial_cell_size",
     )
 
     def __init__(
@@ -169,6 +171,7 @@ class World:
         predation_params: PredationParams | None = None,
         reproducer: Reproducer | None = None,
         offspring_placement_factor: float = 2.0,
+        spatial_cell_size: float = 100.0,
     ) -> None:
         if any(extent <= 0 for extent in size):
             raise ValueError("every world extent must be positive")
@@ -197,6 +200,10 @@ class World:
         # placement factor's canonical value lives in config (iron law 10).
         self._reproducer = reproducer
         self._offspring_placement_factor = offspring_placement_factor
+        # Perception acceleration (iron law 10: a pure performance knob, never a
+        # result knob). Cell size only changes how the neighbour search is bucketed;
+        # the exact range + field-of-view test still decides what is actually seen.
+        self._spatial_cell_size = spatial_cell_size
 
     # --- id allocation (World owns the counter, iron law 7) -------------------
 
@@ -258,20 +265,47 @@ class World:
             return None
         return rel
 
-    def perceive(self, agent: Agent) -> Perception:
+    def _build_grids(self) -> tuple[UniformGrid[Agent], UniformGrid[Plant]]:
+        """Bucket all current agents and plants into fresh spatial grids (O(N)).
+
+        Built once per tick before the decide phase and shared by every agent's
+        perception; positions are stable through phase 1, so one build serves all.
+        """
+        agent_grid: UniformGrid[Agent] = UniformGrid(self.size, self._spatial_cell_size)
+        agent_grid.rebuild((a.position, a) for a in self.agents.values())
+        plant_grid: UniformGrid[Plant] = UniformGrid(self.size, self._spatial_cell_size)
+        plant_grid.rebuild((p.position, p) for p in self.plants.values())
+        return agent_grid, plant_grid
+
+    def perceive(
+        self,
+        agent: Agent,
+        agent_grid: UniformGrid[Agent] | None = None,
+        plant_grid: UniformGrid[Plant] | None = None,
+    ) -> Perception:
         """Gather what `agent` can see this tick into a Perception value object.
 
         An entity is perceived when it is within `perception_range` by toroidal
         distance and inside the field of view (see `_visible_delta`). Plants and
         agents are filtered by the same vision; a plant behind the agent is unseen.
+
+        The spatial grids are only an accelerator: they pre-select candidate cells
+        so we test a handful of nearby entities instead of every one (O(N) per tick
+        instead of O(N^2)). `tick()` builds them once and passes them in; a direct
+        call (e.g. a test) omits them and gets a one-off build -- results are
+        identical either way, since the exact range/FOV test below is unchanged.
         """
         pheno = agent.phenotype
-        range_sq = pheno.perception_range * pheno.perception_range
+        perception_range = pheno.perception_range
+        range_sq = perception_range * perception_range
         cos_half = pheno.perception_cos_half_angle
         heading_unit = agent.heading.normalized()
 
+        if agent_grid is None or plant_grid is None:
+            agent_grid, plant_grid = self._build_grids()
+
         seen_agents: list[PerceivedAgent] = []
-        for other in self.agents.values():
+        for other in agent_grid.query(agent.position, perception_range):
             if other.id == agent.id or not other.alive:
                 continue
             rel = self._visible_delta(
@@ -290,7 +324,7 @@ class World:
             )
 
         seen_plants: list[PerceivedPlant] = []
-        for plant in self.plants.values():
+        for plant in plant_grid.query(agent.position, perception_range):
             rel = self._visible_delta(
                 agent.position, plant.position, heading_unit, range_sq, cos_half
             )
@@ -427,12 +461,14 @@ class World:
         """
         tick_rng = self._rng.spawn(f"tick/{self.tick_count}")
 
-        # Phase 1: decide (no mutation).
+        # Phase 1: decide (no mutation). Build the perception grids once and share
+        # them across all agents -- positions don't change during the decide phase.
+        agent_grid, plant_grid = self._build_grids()
         decisions: list[tuple[int, Action]] = []
         for agent in self.agents.values():
             if not agent.alive:
                 continue
-            perception = self.perceive(agent)
+            perception = self.perceive(agent, agent_grid, plant_grid)
             agent_rng = tick_rng.spawn(f"agent/{agent.id}")
             decisions.append((agent.id, agent.decision_maker.decide(perception, agent_rng)))
 

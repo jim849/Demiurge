@@ -42,6 +42,7 @@ def build_world(seed: int) -> World:
         predation_params=config.PREDATION_PARAMS,
         reproducer=AsexualReproduction(),
         offspring_placement_factor=config.OFFSPRING_PLACEMENT_FACTOR,
+        spatial_cell_size=config.SPATIAL_CELL_SIZE,
     )
     world.populate(config.INITIAL_AGENT_COUNT, initial_energy=config.INITIAL_AGENT_ENERGY)
     world.scatter_plants(
