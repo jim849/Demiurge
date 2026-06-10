@@ -9,9 +9,10 @@ tick is tested later.
 
 import pytest
 
-from core.decision.base import DecisionMaker, Perception
+from core.decision.base import DecisionMaker, EatAction, MoveAction, Perception
 from core.decision.rule_based import RuleBasedBrain
 from core.genome import Genome
+from core.recording import Recorder
 from core.rng import Rng
 from core.vector import Vector
 from core.world import AgentSnapshot, World, WorldSnapshot
@@ -320,3 +321,114 @@ def test_perception_uses_toroidal_distance_across_the_seam():
     p = w.perceive(obs)
     assert len(p.nearby_agents) == 1
     assert p.nearby_agents[0].relative_position == Vector(4.0, 0.0)
+
+
+# --- the two-phase tick -------------------------------------------------------
+
+class _FixedBrain(DecisionMaker):
+    """A brain that always returns the same action -- for resolve-phase tests."""
+
+    def __init__(self, action):
+        self._action = action
+
+    def decide(self, perception, rng):
+        return self._action
+
+
+def _fixed_world(action, *, size=Vector(1000.0, 1000.0)) -> World:
+    return World(
+        size,
+        Rng(config.DEFAULT_SEED),
+        schema=config.GENOME_SCHEMA,
+        phenotype_params=config.PHENOTYPE_PARAMS,
+        brain_factory=lambda g: _FixedBrain(action),
+    )
+
+
+class _ListRecorder(Recorder):
+    def __init__(self):
+        self.ticks = []
+
+    def record_tick(self, snapshot):
+        self.ticks.append(snapshot.tick)
+
+
+def test_tick_advances_count():
+    w = _world()
+    w.populate(3, initial_energy=1000.0)
+    w.tick()
+    w.tick()
+    assert w.tick_count == 2
+
+
+def test_resting_agent_ages_and_pays_resting_cost():
+    w = _fixed_world(MoveAction(direction=Vector(1.0, 0.0), speed_fraction=0.0))
+    a = w.spawn_agent(_genome(), Vector(50.0, 50.0), heading=Vector(1.0, 0.0), energy=1000.0)
+    before_pos, before_energy = a.position, a.energy
+    w.tick()
+    assert a.age == 1
+    assert a.position == before_pos  # rest -> no displacement
+    assert a.energy == pytest.approx(before_energy - a.phenotype.resting_cost)
+
+
+def test_moving_agent_advances_and_pays_move_cost():
+    w = _fixed_world(MoveAction(direction=Vector(1.0, 0.0), speed_fraction=1.0))
+    a = w.spawn_agent(_genome(), Vector(50.0, 50.0), heading=Vector(1.0, 0.0), energy=1000.0)
+    speed = a.phenotype.max_speed
+    expected_cost = a.phenotype.move_cost(speed) + a.phenotype.resting_cost
+    before_energy = a.energy
+    w.tick()
+    assert a.position == Vector(50.0 + speed, 50.0)
+    assert a.heading == Vector(1.0, 0.0)
+    assert a.energy == pytest.approx(before_energy - expected_cost)
+
+
+def test_movement_wraps_around_torus():
+    w = _fixed_world(MoveAction(direction=Vector(1.0, 0.0), speed_fraction=1.0),
+                     size=Vector(100.0, 100.0))
+    a = w.spawn_agent(_genome(), Vector(98.0, 50.0), heading=Vector(1.0, 0.0), energy=1000.0)
+    speed = a.phenotype.max_speed
+    w.tick()
+    assert a.position.x == pytest.approx((98.0 + speed) % 100.0)
+    assert a.position.y == pytest.approx(50.0)
+
+
+def test_eat_action_is_noop_but_still_pays_resting_cost():
+    w = _fixed_world(EatAction(target_id=999))
+    a = w.spawn_agent(_genome(), Vector(50.0, 50.0), heading=Vector(1.0, 0.0), energy=1000.0)
+    before_pos, before_energy = a.position, a.energy
+    w.tick()
+    assert a.position == before_pos
+    assert a.age == 1
+    assert a.energy == pytest.approx(before_energy - a.phenotype.resting_cost)
+
+
+def test_agent_dies_and_is_reaped_when_energy_exhausted():
+    w = _fixed_world(MoveAction(direction=Vector(1.0, 0.0), speed_fraction=0.0))
+    a = w.spawn_agent(_genome(), Vector(50.0, 50.0), heading=Vector(1.0, 0.0), energy=0.01)
+    assert a.phenotype.resting_cost > 0.01  # sanity: this tick is fatal
+    w.tick()
+    assert a.id not in w.agents  # reaped
+    assert w.tick_count == 1
+
+
+def test_tick_is_deterministic_for_same_seed():
+    def run():
+        w = _world()
+        w.populate(6, initial_energy=200.0)
+        for _ in range(10):
+            w.tick()
+        return w.snapshot()
+    assert run() == run()
+
+
+def test_recorder_receives_every_tick():
+    rec = _ListRecorder()
+    w = World(Vector(1000.0, 1000.0), Rng(config.DEFAULT_SEED),
+              schema=config.GENOME_SCHEMA, phenotype_params=config.PHENOTYPE_PARAMS,
+              brain_factory=_brain_factory, recorder=rec)
+    w.populate(3, initial_energy=1000.0)
+    w.tick()
+    w.tick()
+    w.tick()
+    assert rec.ticks == [1, 2, 3]

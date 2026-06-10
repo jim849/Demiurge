@@ -31,9 +31,17 @@ from dataclasses import dataclass
 from typing import Callable
 
 from core.agent import Agent
-from core.decision.base import DecisionMaker, PerceivedAgent, Perception
+from core.decision.base import (
+    Action,
+    DecisionMaker,
+    EatAction,
+    MoveAction,
+    PerceivedAgent,
+    Perception,
+)
 from core.genome import ChromosomeSpec, Genome
 from core.phenotype import PhenotypeParams, express
+from core.recording import NullRecorder, Recorder
 from core.rng import Rng
 from core.vector import Vector
 
@@ -96,6 +104,7 @@ class World:
         "_phenotype_params",
         "_brain_factory",
         "_next_id",
+        "_recorder",
     )
 
     def __init__(
@@ -106,6 +115,7 @@ class World:
         schema: tuple[ChromosomeSpec, ...],
         phenotype_params: PhenotypeParams,
         brain_factory: BrainFactory,
+        recorder: Recorder | None = None,
     ) -> None:
         if any(extent <= 0 for extent in size):
             raise ValueError("every world extent must be positive")
@@ -119,6 +129,8 @@ class World:
         self._phenotype_params = phenotype_params
         self._brain_factory = brain_factory
         self._next_id = 0
+        # Data-recording seam (iron law 6): default is a no-op sink.
+        self._recorder = recorder if recorder is not None else NullRecorder()
 
     # --- id allocation (World owns the counter, iron law 7) -------------------
 
@@ -251,6 +263,78 @@ class World:
                 genome, position, heading=heading,
                 energy=initial_energy, generation=0,
             )
+
+    # --- the two-phase tick ---------------------------------------------------
+
+    def tick(self) -> None:
+        """Advance the world by one step: decide for all, then resolve all.
+
+        Two phases enforce simultaneity ("brain proposes, world disposes"):
+
+        1. **Decide (read-only).** Every living agent, in id order, perceives the
+           world and returns an Action. `decide` is a pure function and mutates
+           nothing, so all agents decide against the *same* un-changed world -- no
+           agent gets to react to another's move within the same tick.
+        2. **Resolve (write).** The world applies every collected action, then ages
+           agents, charges metabolism, and removes the dead.
+
+        Randomness is drawn from a per-tick, per-agent named sub-stream so the run
+        is reproducible (iron laws 7, 8) and one agent's draws can't shift another's.
+        """
+        tick_rng = self._rng.spawn(f"tick/{self.tick_count}")
+
+        # Phase 1: decide (no mutation).
+        decisions: list[tuple[int, Action]] = []
+        for agent in self.agents.values():
+            if not agent.alive:
+                continue
+            perception = self.perceive(agent)
+            agent_rng = tick_rng.spawn(f"agent/{agent.id}")
+            decisions.append((agent.id, agent.decision_maker.decide(perception, agent_rng)))
+
+        # Phase 2: resolve (mutation).
+        for agent_id, action in decisions:
+            self._resolve(self.agents[agent_id], action)
+
+        # Metabolism, ageing, and death -- in id order for determinism.
+        for agent in self.agents.values():
+            if not agent.alive:
+                continue
+            agent.advance_age()
+            agent.spend_energy(agent.phenotype.resting_cost)
+            if agent.energy <= 0.0:
+                agent.mark_dead()
+
+        # Reap the dead.
+        self.agents = {aid: a for aid, a in self.agents.items() if a.alive}
+
+        self.tick_count += 1
+        self._recorder.record_tick(self.snapshot())
+
+    def _resolve(self, agent: Agent, action: Action) -> None:
+        """Apply one agent's chosen action (v1: movement + move cost only).
+
+        EatAction is a no-op for now -- ingestion/predation resolution arrives with
+        plants and the energy-transfer rules in a later sub-step. An agent that
+        chose to eat simply holds position and still pays the per-tick resting cost
+        charged in `tick`.
+        """
+        if isinstance(action, MoveAction):
+            self._resolve_move(agent, action)
+        elif isinstance(action, EatAction):
+            return  # no-op in v1
+        # Unknown action types are ignored defensively; the brain contract is closed.
+
+    def _resolve_move(self, agent: Agent, action: MoveAction) -> None:
+        if action.speed_fraction <= 0.0:
+            return  # resting: no displacement, no movement cost
+        direction = action.direction.normalized()
+        if direction.length_squared() == 0.0:
+            return  # no usable direction
+        speed = action.speed_fraction * agent.phenotype.max_speed
+        agent.position = self.wrap(agent.position + direction * speed)
+        agent.heading = direction  # face travel direction
+        agent.spend_energy(agent.phenotype.move_cost(speed))
 
     # --- inspection -----------------------------------------------------------
 
