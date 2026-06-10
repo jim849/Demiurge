@@ -37,6 +37,9 @@ class PhenotypeParams:
     move_cost_coeff: float       # energy per (size * speed^exponent)
     speed_cost_exponent: float   # super-linear; 2.0 = quadratic (metabolic analogy)
 
+    # Body
+    body_radius_unit: float      # world-space body radius at size = 1 (drives contact + drawing)
+
     # Metabolism / perception
     base_rest: float             # baseline resting drain per tick
     metab_cost_coeff: float      # resting drain from metabolism gene, scaled by size
@@ -60,6 +63,7 @@ class Phenotype:
 
     size: float
     max_speed: float
+    body_radius: float
     perception_radius: float
     resting_cost: float
     repro_threshold_energy: float
@@ -91,6 +95,10 @@ def express(genome: Genome, params: PhenotypeParams) -> Phenotype:
     max_speed = params.speed_unit * speed
     move_cost_factor = params.move_cost_coeff * size
 
+    # Body radius in world units: drives the contact ("close enough to eat") test
+    # (v1 contact = sum of two radii) and rendering. Bigger body = larger reach.
+    body_radius = params.body_radius_unit * size
+
     # Perception radius (its energy cost is folded into resting metabolism below).
     perception_radius = params.sense_unit * sense
 
@@ -113,6 +121,7 @@ def express(genome: Genome, params: PhenotypeParams) -> Phenotype:
     return Phenotype(
         size=size,
         max_speed=max_speed,
+        body_radius=body_radius,
         perception_radius=perception_radius,
         resting_cost=resting_cost,
         repro_threshold_energy=repro_threshold_energy,

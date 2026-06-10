@@ -62,6 +62,8 @@ PHENOTYPE_PARAMS = PhenotypeParams(
     speed_unit=10.0,
     move_cost_coeff=0.5,
     speed_cost_exponent=2.0,
+    # Body: world-space radius at size=1 (contact = sum of radii; also the draw size)
+    body_radius_unit=10.0,
     # Metabolism / perception
     base_rest=0.1,
     metab_cost_coeff=0.5,

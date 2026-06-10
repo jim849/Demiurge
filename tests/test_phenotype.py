@@ -18,6 +18,7 @@ _P = PhenotypeParams(
     speed_unit=10.0,
     move_cost_coeff=1.0,
     speed_cost_exponent=2.0,
+    body_radius_unit=10.0,
     base_rest=0.0,
     metab_cost_coeff=1.0,
     sense_rest_coeff=1.0,
@@ -60,6 +61,13 @@ def test_max_speed_is_size_neutral_in_v1():
 def test_perception_radius_tracks_sense_gene():
     p = express(_genome(sense_range=0.3), _P)
     assert p.perception_radius == pytest.approx(30.0)
+
+
+def test_body_radius_proportional_to_size_gene():
+    small = express(_genome(size=0.2), _P)
+    big = express(_genome(size=0.8), _P)
+    assert small.body_radius == pytest.approx(2.0)
+    assert big.body_radius == pytest.approx(8.0)
 
 
 # --- trade-offs --------------------------------------------------------------

@@ -38,8 +38,8 @@ def _phenotype():
 def test_perception_holds_relative_entities_and_self_state():
     ph = _phenotype()
     p = Perception(
-        nearby_agents=(PerceivedAgent(id=2, relative_position=Vector(3.0, 4.0), size=0.7, diet=0.9),),
-        nearby_plants=(PerceivedPlant(id=9, relative_position=Vector(-1.0, 0.0)),),
+        nearby_agents=(PerceivedAgent(id=2, relative_position=Vector(3.0, 4.0), size=0.7, diet=0.9, body_radius=7.0),),
+        nearby_plants=(PerceivedPlant(id=9, relative_position=Vector(-1.0, 0.0), body_radius=3.0),),
         own_energy=42.0,
         own_phenotype=ph,
     )
@@ -47,13 +47,15 @@ def test_perception_holds_relative_entities_and_self_state():
     assert p.nearby_agents[0].relative_position == Vector(3.0, 4.0)
     assert p.nearby_agents[0].size == 0.7
     assert p.nearby_agents[0].diet == 0.9
+    assert p.nearby_agents[0].body_radius == 7.0
     assert p.nearby_plants[0].id == 9
+    assert p.nearby_plants[0].body_radius == 3.0
     assert p.own_energy == 42.0
     assert p.own_phenotype is ph
 
 
 def test_perceived_entities_are_immutable():
-    a = PerceivedAgent(id=1, relative_position=Vector(0.0, 0.0), size=0.5, diet=0.5)
+    a = PerceivedAgent(id=1, relative_position=Vector(0.0, 0.0), size=0.5, diet=0.5, body_radius=5.0)
     with pytest.raises(Exception):
         a.size = 0.9  # type: ignore[misc]
 

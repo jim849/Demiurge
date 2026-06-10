@@ -50,14 +50,20 @@ class PerceivedAgent:
     relative_position: Vector  # target_position - self_position
     size: float
     diet: float
+    body_radius: float         # world-space radius; contact = sum of the two radii
 
 
 @dataclass(frozen=True, slots=True)
 class PerceivedPlant:
-    """A plant as seen by the perceiver: identity and where."""
+    """A plant as seen by the perceiver: identity, where, and how big.
+
+    `body_radius` lets the brain run the same contact test as for agents
+    (contact = sum of the two radii) when deciding to eat vs. approach.
+    """
 
     id: int
     relative_position: Vector
+    body_radius: float         # world-space radius; contact = sum of the two radii
 
 
 @dataclass(frozen=True, slots=True)
