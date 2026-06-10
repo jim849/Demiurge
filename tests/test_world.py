@@ -537,3 +537,108 @@ def test_narrow_cone_excludes_plant_behind():
     w.plants.pop(behind.id)
     w.spawn_plant(_ORIGIN + Vector(r, 0.0), energy=30.0, body_radius=3.0)
     assert len(w.perceive(obs).nearby_plants) == 1
+
+
+# --- herbivory: eating resolution --------------------------------------------
+
+class _PlantEaterBrain(DecisionMaker):
+    """Always tries to eat the first perceived plant; rests otherwise."""
+
+    def decide(self, perception, rng):
+        if perception.nearby_plants:
+            return EatAction(target_id=perception.nearby_plants[0].id)
+        return MoveAction(direction=Vector(1.0, 0.0), speed_fraction=0.0)
+
+
+def _eater_world(size=Vector(1000.0, 1000.0)) -> World:
+    return World(
+        size,
+        Rng(config.DEFAULT_SEED),
+        schema=config.GENOME_SCHEMA,
+        phenotype_params=config.PHENOTYPE_PARAMS,
+        brain_factory=lambda g: _PlantEaterBrain(),
+    )
+
+
+# herbivore + panoramic so it both sees and digests a plant fully
+_HERB = dict(diet=0.0, vision_focus=0.0, vision_budget=1.0)
+
+
+def test_herbivore_eats_adjacent_plant_and_gains_energy():
+    w = _eater_world()
+    a = w.spawn_agent(_genome(**_HERB), _ORIGIN, heading=Vector(1.0, 0.0), energy=100.0)
+    plant = w.spawn_plant(_ORIGIN + Vector(4.0, 0.0), energy=30.0, body_radius=3.0)  # reach=5+3=8
+    gain = a.phenotype.plant_gain * plant.energy
+    rest = a.phenotype.resting_cost
+    w.tick()
+    assert plant.id not in w.plants                       # consumed whole
+    assert a.energy == pytest.approx(100.0 + gain - rest)  # gained, then paid metabolism
+
+
+def test_eat_requires_contact_world_is_authoritative():
+    w = _eater_world()
+    a = w.spawn_agent(_genome(**_HERB), _ORIGIN, heading=Vector(1.0, 0.0), energy=100.0)
+    # visible (within range) but well beyond reach -> brain still emits EatAction
+    plant = w.spawn_plant(_ORIGIN + Vector(20.0, 0.0), energy=30.0, body_radius=3.0)
+    rest = a.phenotype.resting_cost
+    w.tick()
+    assert plant.id in w.plants                       # not eaten: out of contact
+    assert a.energy == pytest.approx(100.0 - rest)    # only metabolism, no gain
+
+
+def test_only_one_agent_wins_a_contested_plant():
+    w = _eater_world()
+    # one plant flanked by two herbivores, both in contact (reach 8)
+    a0 = w.spawn_agent(_genome(**_HERB), _ORIGIN + Vector(-4.0, 0.0), heading=Vector(1.0, 0.0), energy=100.0)
+    a1 = w.spawn_agent(_genome(**_HERB), _ORIGIN + Vector(4.0, 0.0), heading=Vector(-1.0, 0.0), energy=100.0)
+    plant = w.spawn_plant(_ORIGIN, energy=30.0, body_radius=3.0)
+    gain = a0.phenotype.plant_gain * plant.energy
+    rest = a0.phenotype.resting_cost
+    w.tick()
+    assert plant.id not in w.plants
+    energies = sorted([a0.energy, a1.energy])
+    assert energies[0] == pytest.approx(100.0 - rest)         # loser: metabolism only
+    assert energies[1] == pytest.approx(100.0 + gain - rest)  # winner: ate it
+
+
+def test_contested_plant_winner_is_reproducible():
+    def run():
+        w = _eater_world()
+        w.spawn_agent(_genome(**_HERB), _ORIGIN + Vector(-4.0, 0.0), heading=Vector(1.0, 0.0), energy=100.0)
+        w.spawn_agent(_genome(**_HERB), _ORIGIN + Vector(4.0, 0.0), heading=Vector(-1.0, 0.0), energy=100.0)
+        w.spawn_plant(_ORIGIN, energy=30.0, body_radius=3.0)
+        w.tick()
+        return [a.energy for a in w.agents.values()]
+    assert run() == run()
+
+
+def test_omnivore_gains_less_than_herbivore_from_same_plant():
+    def delta(diet):
+        w = _eater_world()
+        a = w.spawn_agent(_genome(diet=diet, vision_focus=0.0, vision_budget=1.0),
+                          _ORIGIN, heading=Vector(1.0, 0.0), energy=100.0)
+        w.spawn_plant(_ORIGIN + Vector(4.0, 0.0), energy=30.0, body_radius=3.0)
+        rest = a.phenotype.resting_cost
+        w.tick()
+        return a.energy - (100.0 - rest)  # pure food gain, metabolism removed
+    assert delta(0.5) < delta(0.0)
+    assert delta(0.5) > 0.0
+
+
+def test_eating_a_prey_target_is_deferred_no_consumption():
+    # An EatAction whose target is an agent (not a plant) is ignored in v1.
+    class _PreyEater(DecisionMaker):
+        def decide(self, perception, rng):
+            if perception.nearby_agents:
+                return EatAction(target_id=perception.nearby_agents[0].id)
+            return MoveAction(direction=Vector(1.0, 0.0), speed_fraction=0.0)
+
+    w = World(Vector(1000.0, 1000.0), Rng(config.DEFAULT_SEED), schema=config.GENOME_SCHEMA,
+              phenotype_params=config.PHENOTYPE_PARAMS, brain_factory=lambda g: _PreyEater())
+    hunter = w.spawn_agent(_genome(diet=1.0, vision_focus=0.0, vision_budget=1.0),
+                           _ORIGIN, heading=Vector(1.0, 0.0), energy=100.0)
+    prey = w.spawn_agent(_genome(size=0.2), _ORIGIN + Vector(4.0, 0.0), energy=100.0)
+    rest = hunter.phenotype.resting_cost
+    w.tick()
+    assert prey.id in w.agents                            # prey survives (predation deferred)
+    assert hunter.energy == pytest.approx(100.0 - rest)   # hunter gained nothing

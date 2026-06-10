@@ -368,8 +368,7 @@ class World:
             decisions.append((agent.id, agent.decision_maker.decide(perception, agent_rng)))
 
         # Phase 2: resolve (mutation).
-        for agent_id, action in decisions:
-            self._resolve(self.agents[agent_id], action)
+        self._resolve_actions(decisions, tick_rng.spawn("resolve"))
 
         # Metabolism, ageing, and death -- in id order for determinism.
         for agent in self.agents.values():
@@ -386,19 +385,23 @@ class World:
         self.tick_count += 1
         self._recorder.record_tick(self.snapshot())
 
-    def _resolve(self, agent: Agent, action: Action) -> None:
-        """Apply one agent's chosen action (v1: movement + move cost only).
+    def _resolve_actions(self, decisions: list[tuple[int, Action]], resolve_rng: Rng) -> None:
+        """Apply all collected actions: movement is independent per agent; eating is
+        resolved as a group because several agents may target the same food.
 
-        EatAction is a no-op for now -- ingestion/predation resolution arrives with
-        plants and the energy-transfer rules in a later sub-step. An agent that
-        chose to eat simply holds position and still pays the per-tick resting cost
-        charged in `tick`.
+        Order is immaterial in v1: an eater does not move and plants are stationary,
+        so contact is unaffected by other agents' moves. (Moving prey arrives with
+        the predation sub-step, which will revisit this.)
         """
-        if isinstance(action, MoveAction):
-            self._resolve_move(agent, action)
-        elif isinstance(action, EatAction):
-            return  # no-op in v1
-        # Unknown action types are ignored defensively; the brain contract is closed.
+        eat_intents: list[tuple[int, int]] = []  # (eater_id, target_id)
+        for agent_id, action in decisions:
+            agent = self.agents[agent_id]
+            if isinstance(action, MoveAction):
+                self._resolve_move(agent, action)
+            elif isinstance(action, EatAction):
+                eat_intents.append((agent_id, action.target_id))
+            # Unknown action types are ignored; the brain contract is closed.
+        self._resolve_eating(eat_intents, resolve_rng)
 
     def _resolve_move(self, agent: Agent, action: MoveAction) -> None:
         if action.speed_fraction <= 0.0:
@@ -410,6 +413,39 @@ class World:
         agent.position = self.wrap(agent.position + direction * speed)
         agent.heading = direction  # face travel direction
         agent.spend_energy(agent.phenotype.move_cost(speed))
+
+    def _in_contact(self, agent: Agent, target_position: Vector, target_radius: float) -> bool:
+        """True if `agent` is touching a target: toroidal distance <= sum of radii."""
+        reach = agent.phenotype.body_radius + target_radius
+        return self.toroidal_delta(agent.position, target_position).length_squared() <= reach * reach
+
+    def _resolve_eating(self, eat_intents: list[tuple[int, int]], resolve_rng: Rng) -> None:
+        """Resolve plant grazing. (Prey targets are deferred to the predation sub-step.)
+
+        The brain already rolled its *willingness* to eat (B' probability) in the
+        decide phase; the world is authoritative for the *physical* outcome: it
+        re-checks contact and arbitrates conflicts. When several agents reach the
+        same plant in one tick, a fair RNG draw picks one winner (no low-id
+        advantage); the winner gains `plant_gain * plant.energy` and the plant is
+        removed. Losers go hungry this tick.
+        """
+        eaters_by_plant: dict[int, list[int]] = {}
+        for eater_id, target_id in eat_intents:
+            if target_id in self.plants:  # ignore prey / stale targets in v1
+                eaters_by_plant.setdefault(target_id, []).append(eater_id)
+
+        for plant_id in sorted(eaters_by_plant):  # deterministic processing order
+            plant = self.plants[plant_id]
+            contenders = [
+                eid for eid in eaters_by_plant[plant_id]
+                if self._in_contact(self.agents[eid], plant.position, plant.body_radius)
+            ]
+            if not contenders:
+                continue
+            winner_id = contenders[0] if len(contenders) == 1 else resolve_rng.choice(contenders)
+            winner = self.agents[winner_id]
+            winner.add_energy(winner.phenotype.plant_gain * plant.energy)
+            del self.plants[plant_id]
 
     # --- inspection -----------------------------------------------------------
 
