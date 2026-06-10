@@ -127,6 +127,32 @@ The brain is a **pure function**: perception in → action out. This input/outpu
 
 Method A chosen for v1 (interpretable, debuggable, personality genes active throughout). **Deferred refinements (record now, implement later): (a) method B — utility scoring** instead of a fixed ladder, swappable without touching core; **(b) smarter multi-threat / multi-target handling** — e.g. flee a *composite* away-vector from several threats rather than just the nearest, and value-weighted target choice rather than nearest-only. Reproduction is auto-triggered in v1 but isolated so it can later become a brain-decided action.
 
+**Brain ownership — 方案甲 (finalized M1).** The DecisionMaker *instance* lives on
+each Agent (`agent.decision_maker`), expressed from that agent's own genome at
+birth, so personality genes (aggression/fear/exploration) are **baked into the
+instance** rather than threaded through Perception every tick. Consequences:
+Perception stays lean (surroundings + own body only, no personality); a population
+can mix brain types (rule-based and NN side by side, the M2 competition); and
+per-individual learned state (future NN weights/memory) has a natural home that
+travels with the individual through reproduction and death.
+
+Three roles are kept separate so this does **not** violate the lean-agent rule or
+iron law 5: (1) the brain *instance* is individual state on the Agent; (2) the
+brain *logic* is external, replaceable code in `core/decision/` — the Agent imports
+only the abstract `DecisionMaker`, never a concrete brain; (3) the brain is
+*driven* by the World, which calls `decide()` in the tick's decide phase (the Agent
+never calls its own brain — that would be a policy method). Brains are injected
+via a `brain_factory: (Genome) -> DecisionMaker` passed to the World, so swapping
+the brain touches only the factory.
+
+*Rejected alternative:* pure ECS / data-oriented, where the brain is a stateless
+system over component arrays and the Agent is pure data. Cache-friendly and good
+for GPU-batched NN, but heritable per-individual "different minds" and rule-vs-NN
+co-existence become awkward, and it is premature for a few hundred agents in v1.
+*Known caveat:* per-individual brain objects can complicate future GPU-batched NN
+inference; mitigation is that the World may gather/batch behind the unchanged
+`decide` interface — a performance concern, not a correctness one.
+
 ### Tick Update Model (finalized in Milestone 0)
 
 **Simultaneous update, two phases per tick:**
