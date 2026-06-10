@@ -42,7 +42,9 @@ def test_perception_holds_relative_entities_and_self_state():
         nearby_plants=(PerceivedPlant(id=9, relative_position=Vector(-1.0, 0.0), body_radius=3.0),),
         own_energy=42.0,
         own_phenotype=ph,
+        own_heading=Vector(0.0, 1.0),
     )
+    assert p.own_heading == Vector(0.0, 1.0)
     assert p.nearby_agents[0].id == 2
     assert p.nearby_agents[0].relative_position == Vector(3.0, 4.0)
     assert p.nearby_agents[0].size == 0.7
@@ -61,7 +63,7 @@ def test_perceived_entities_are_immutable():
 
 
 def test_perception_is_immutable():
-    p = Perception(nearby_agents=(), nearby_plants=(), own_energy=1.0, own_phenotype=_phenotype())
+    p = Perception(nearby_agents=(), nearby_plants=(), own_energy=1.0, own_phenotype=_phenotype(), own_heading=Vector(1.0, 0.0))
     with pytest.raises(Exception):
         p.own_energy = 2.0  # type: ignore[misc]
 
@@ -111,7 +113,7 @@ def test_concrete_decisionmaker_implements_decide():
             return MoveAction(direction=Vector(1.0, 0.0), speed_fraction=0.0)
 
     brain = FixedBrain()
-    p = Perception(nearby_agents=(), nearby_plants=(), own_energy=1.0, own_phenotype=_phenotype())
+    p = Perception(nearby_agents=(), nearby_plants=(), own_energy=1.0, own_phenotype=_phenotype(), own_heading=Vector(1.0, 0.0))
     action = brain.decide(p, Rng(1))
     assert isinstance(action, MoveAction)
 
@@ -125,6 +127,6 @@ def test_decide_receives_injected_rng():
             return EatAction(target_id=rng.randint(0, 5))
 
     rng = Rng(7)
-    p = Perception(nearby_agents=(), nearby_plants=(), own_energy=1.0, own_phenotype=_phenotype())
+    p = Perception(nearby_agents=(), nearby_plants=(), own_energy=1.0, own_phenotype=_phenotype(), own_heading=Vector(1.0, 0.0))
     RngBrain().decide(p, rng)
     assert seen["rng"] is rng

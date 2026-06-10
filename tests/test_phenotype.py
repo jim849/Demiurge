@@ -122,6 +122,37 @@ def test_carnivory_peak_exceeds_herbivory_peak():
     assert _P.carn_max > _P.herb_max
 
 
+# --- eating willingness (B': probability tracks digestibility) ----------------
+
+def test_pure_specialists_have_extreme_eat_probabilities():
+    herb = express(_genome(diet=0.0), _P)
+    assert herb.plant_eat_prob == pytest.approx(1.0)
+    assert herb.prey_eat_prob == pytest.approx(0.0)
+    carn = express(_genome(diet=1.0), _P)
+    assert carn.prey_eat_prob == pytest.approx(1.0)
+    assert carn.plant_eat_prob == pytest.approx(0.0)
+
+
+def test_more_carnivorous_means_less_likely_to_eat_plants():
+    grazer = express(_genome(diet=0.3), _P)
+    hunter = express(_genome(diet=0.7), _P)
+    assert hunter.plant_eat_prob < grazer.plant_eat_prob
+    assert hunter.prey_eat_prob > grazer.prey_eat_prob
+
+
+def test_eat_probabilities_are_valid_probabilities():
+    for diet in (0.0, 0.25, 0.5, 0.75, 1.0):
+        p = express(_genome(diet=diet), _P)
+        assert 0.0 <= p.plant_eat_prob <= 1.0
+        assert 0.0 <= p.prey_eat_prob <= 1.0
+
+
+def test_eat_prob_equals_normalized_gain():
+    p = express(_genome(diet=0.4), _P)
+    assert p.plant_eat_prob == pytest.approx(p.plant_gain / _P.herb_max)
+    assert p.prey_eat_prob == pytest.approx(p.prey_gain / _P.carn_max)
+
+
 # --- reproduction threshold mapping ------------------------------------------
 
 def test_repro_threshold_maps_normalized_to_energy():

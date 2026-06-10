@@ -11,6 +11,7 @@ phenotype.py, not this schema.
 
 from __future__ import annotations
 
+from core.decision.rule_based import BrainParams
 from core.genome import ChromosomeSpec, GeneSpec
 from core.phenotype import PhenotypeParams
 
@@ -77,6 +78,16 @@ PHENOTYPE_PARAMS = PhenotypeParams(
     carn_max=1.5,
     herb_exp=1.5,
     carn_exp=1.5,
+)
+
+# --- rule-based brain knobs --------------------------------------------------
+# Thresholds for the hand-written v1 brain (core/decision/rule_based.py). All
+# starting points, to be tuned by observation.
+BRAIN_PARAMS = BrainParams(
+    carnivore_threat_threshold=0.5,  # diet >= this => a neighbour reads as a predator
+    predation_size_ratio=1.2,        # need > 1.2x the target's size to prey on it
+    fear_flee_distance_unit=100.0,   # flee within (fear * 100) world units of a threat
+    cruise_speed_fraction=0.5,       # foraging / wander travel speed (TEMP; see BrainParams)
 )
 
 # --- reproducibility ---------------------------------------------------------

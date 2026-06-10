@@ -70,15 +70,23 @@ class PerceivedPlant:
 class Perception:
     """Everything a brain is allowed to see this tick (within its sense range).
 
-    Holds only what the brain needs: nearby entities (relative), own energy, and
+    Holds only what the brain needs: nearby entities (relative), own energy,
     own phenotype (so it can reason about its own max_speed / size / reach when
-    deciding to chase or flee). Deliberately does NOT expose the whole world.
+    deciding to chase or flee), and own heading. Deliberately does NOT expose the
+    whole world.
+
+    `own_heading` is the agent's current facing direction. It is the brain's only
+    absolute spatial reference (everything else is relative): it supplies the
+    world dimension for constructing a movement Vector even when nothing is
+    perceived, and gives a "forward" to perturb when wandering. Kept as a
+    direction (not a position) so the snapshot stays translation-invariant.
     """
 
     nearby_agents: tuple[PerceivedAgent, ...]
     nearby_plants: tuple[PerceivedPlant, ...]
     own_energy: float
     own_phenotype: Phenotype
+    own_heading: Vector
 
 
 # --- actions (brain output) --------------------------------------------------

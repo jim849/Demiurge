@@ -70,6 +70,8 @@ class Phenotype:
     offspring_investment: float
     plant_gain: float
     prey_gain: float
+    plant_eat_prob: float        # willingness to ingest a plant, in [0, 1] (= plant_gain / herb_max)
+    prey_eat_prob: float         # willingness to ingest prey, in [0, 1]  (= prey_gain / carn_max)
 
     # Stored so move_cost() can be computed per actual speed each tick.
     _move_cost_factor: float
@@ -118,6 +120,13 @@ def express(genome: Genome, params: PhenotypeParams) -> Phenotype:
     plant_gain = params.herb_max * ((1.0 - diet) ** params.herb_exp)
     prey_gain = params.carn_max * (diet ** params.carn_exp)
 
+    # Eating willingness: the same niche curve, normalized to [0, 1], used as the
+    # probability of bothering to ingest a food type on contact. The more
+    # carnivorous, the less likely to eat a plant it touches (and vice versa), so
+    # specialists leave food they can barely digest to those who can.
+    plant_eat_prob = (1.0 - diet) ** params.herb_exp
+    prey_eat_prob = diet ** params.carn_exp
+
     return Phenotype(
         size=size,
         max_speed=max_speed,
@@ -128,6 +137,8 @@ def express(genome: Genome, params: PhenotypeParams) -> Phenotype:
         offspring_investment=offspring_investment,
         plant_gain=plant_gain,
         prey_gain=prey_gain,
+        plant_eat_prob=plant_eat_prob,
+        prey_eat_prob=prey_eat_prob,
         _move_cost_factor=move_cost_factor,
         _speed_cost_exponent=params.speed_cost_exponent,
     )
