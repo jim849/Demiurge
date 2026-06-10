@@ -5,9 +5,15 @@ Design decisions (see PLAN.md, Milestone 0/1):
   (genome + expressed phenotype + position/energy/age). The *policies* that act on
   it -- how it decides, how it moves, how it reproduces -- live in replaceable
   external modules (`decision/`, `reproduction/`, and the resolve phase of
-  `world.py`), per iron law 5. The Agent never imports those modules, so it stays
-  trivially testable headless (iron law 9) and decision/reproduction stay
-  swappable without touching this class.
+  `world.py`), per iron law 5. The Agent holds a `decision_maker` (its brain) but
+  only as the abstract `DecisionMaker` interface -- it never imports a *concrete*
+  brain (e.g. `rule_based`), so brains stay swappable (iron law 5) and the Agent
+  stays trivially testable headless (iron law 9).
+- **The brain lives on the Agent.** Each agent carries its own `decision_maker`
+  instance, expressed from its genome at birth (方案甲: personality is baked into
+  the brain instance, not threaded through Perception). The world calls
+  `decision_maker.decide(perception, rng)` in the decide phase; the Agent itself
+  never invokes it (that would be a policy call).
 - **A few state-integrity methods only.** The exception to "pure data" is a small
   set of methods that guard the agent's own invariants (energy never goes
   negative; re-expressing the phenotype after a gene edit; marking death). These
@@ -27,6 +33,7 @@ Design decisions (see PLAN.md, Milestone 0/1):
 
 from __future__ import annotations
 
+from core.decision.base import DecisionMaker
 from core.genome import Genome
 from core.phenotype import Phenotype, PhenotypeParams, express
 from core.vector import Vector
@@ -45,6 +52,7 @@ class Agent:
         "age",
         "generation",
         "alive",
+        "decision_maker",
     )
 
     def __init__(
@@ -57,6 +65,7 @@ class Agent:
         heading: Vector | None = None,
         energy: float = 0.0,
         generation: int = 0,
+        decision_maker: DecisionMaker | None = None,
     ) -> None:
         if energy < 0:
             raise ValueError("energy cannot be negative")
@@ -75,6 +84,10 @@ class Agent:
         self.age = 0
         self.generation = generation
         self.alive = True
+        # The brain. Optional at construction so tests / fixtures can build a bare
+        # state container; the World assigns one (expressed from the genome) at
+        # birth. Held as the abstract interface -> concrete brain stays swappable.
+        self.decision_maker = decision_maker
 
     # --- state-integrity methods (not policies) -------------------------------
 
