@@ -89,12 +89,21 @@ def run(ticks: int, seed: int, every: int) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Demiurge headless simulation run.")
-    parser.add_argument("--ticks", type=int, default=1000, help="number of ticks to run")
+    parser = argparse.ArgumentParser(description="Demiurge simulation run.")
+    parser.add_argument("--ticks", type=int, default=1000, help="number of ticks to run (headless)")
     parser.add_argument("--seed", type=int, default=config.DEFAULT_SEED, help="world seed")
-    parser.add_argument("--every", type=int, default=50, help="print a stats line every N ticks")
+    parser.add_argument("--every", type=int, default=50, help="print a stats line every N ticks (headless)")
+    parser.add_argument("--render", action="store_true", help="open a pygame window instead of running headless")
     args = parser.parse_args()
-    run(ticks=args.ticks, seed=args.seed, every=args.every)
+
+    if args.render:
+        # Lazy import so the headless path stays free of any pygame dependency
+        # (iron law 1): pygame is only touched when a window is actually requested.
+        from render.view import run as run_render
+
+        run_render(build_world(args.seed))
+    else:
+        run(ticks=args.ticks, seed=args.seed, every=args.every)
 
 
 if __name__ == "__main__":

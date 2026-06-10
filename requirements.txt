@@ -1,0 +1,8 @@
+# Runtime dependencies (the simulation core needs none of these -- iron law 1;
+# they belong to the rendering / input layer only).
+#
+# pygame-ce (Community Edition) is a drop-in replacement for pygame: `import
+# pygame` is unchanged. We use it because it ships prebuilt wheels for current
+# Python (incl. 3.14), whereas upstream pygame would need SDL2 dev headers and a
+# from-source build on this machine.
+pygame-ce>=2.5

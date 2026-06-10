@@ -6,9 +6,17 @@ See PLAN.md for current milestone and progress.
 
 ## How to run
 ```bash
-python main.py
+# headless: run the simulation and print periodic population stats
+python main.py                       # 1000 ticks, default seed
+python main.py --ticks 5000 --every 250
+python main.py --seed 7
+
+# windowed: open a pygame view (space=pause, .=step, up/down=speed, q=quit)
+python main.py --render
 ```
-*(Not yet implemented — update this when main.py exists)*
+Dependencies: runtime in `requirements.txt` (pygame-ce), dev in
+`requirements-dev.txt` (pytest). The repo venv is `eden_venv/`; run via
+`eden_venv/bin/python` (bare `python` may be unavailable).
 
 ## Language conventions
 - **Conversation:** Chinese
