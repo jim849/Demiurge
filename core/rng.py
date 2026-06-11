@@ -19,6 +19,7 @@ for a given seed -- important for cross-platform reproducibility (iron law 9).
 from __future__ import annotations
 
 import hashlib
+import math
 import random
 from typing import MutableSequence, Sequence, TypeVar
 
@@ -94,6 +95,31 @@ class Rng:
     def choice(self, seq: Sequence[T]) -> T:
         """Pick one element uniformly. `seq` must be order-stable (no sets)."""
         return self._rand.choice(seq)
+
+    def weighted_choice(self, seq: Sequence[T], weights: Sequence[float]) -> T:
+        """Pick one element with probability proportional to its weight.
+
+        `seq` and `weights` must be equal-length and order-stable (no sets), with
+        non-negative weights summing to a positive value. Uses a single uniform
+        draw via inverse-CDF, so this consumes exactly one number from the stream
+        regardless of length -- keeping reproducibility robust (see module docs).
+        """
+        if len(seq) != len(weights):
+            raise ValueError("seq and weights must have equal length")
+        if not seq:
+            raise ValueError("cannot choose from an empty sequence")
+        total = math.fsum(weights)
+        if total <= 0.0:
+            raise ValueError("weights must sum to a positive value")
+        threshold = self._rand.random() * total
+        cumulative = 0.0
+        for item, weight in zip(seq, weights):
+            if weight < 0.0:
+                raise ValueError("weights cannot be negative")
+            cumulative += weight
+            if threshold < cumulative:
+                return item
+        return seq[-1]  # float-rounding fallback: total consumed, award the last
 
     def shuffle(self, seq: MutableSequence[T]) -> None:
         """Shuffle a mutable sequence in place."""

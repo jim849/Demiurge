@@ -140,10 +140,15 @@ PLANT_PARAMS = PlantParams(
 # --- predation (world-authoritative) -----------------------------------------
 # The World's own copy of the rules it uses to ADJUDICATE a kill, deliberately
 # separate from the brain's belief (BRAIN_PARAMS.predation_size_ratio): the brain
-# proposes, the world disposes. In v1 size_ratio matches the brain's value.
+# proposes, the world disposes. The kill is a PROBABILITY rising with the size ratio
+# r = hunter_size/prey_size (logistic on log-r; see PredationParams.kill_probability),
+# not a hard gate -- so size continuously shapes predation. At midpoint=1.3,
+# steepness=4.0: a carnivore (size 0.9) killing a herbivore (size 0.35, r~2.6) lands
+# ~0.94; equal size ~0.26; a smaller hunter still ~0.08 (never zero). Starting points.
 PREDATION_PARAMS = PredationParams(
-    size_ratio=1.1,         # predator size must exceed 1.1x the prey's size to kill
-    body_value_coeff=0.3,   # structural meal value = coeff * body_radius**2 (area~mass)
+    kill_ratio_midpoint=1.3,    # size ratio at which the kill is a coin flip (p=0.5)
+    kill_ratio_steepness=4.0,   # how sharply p rises around the midpoint
+    body_value_coeff=0.3,       # structural meal value = coeff * body_radius**2 (area~mass)
 )
 
 # --- reproduction ------------------------------------------------------------

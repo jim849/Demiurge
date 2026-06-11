@@ -82,6 +82,48 @@ def test_shuffle_in_place_is_permutation():
     assert sorted(data) == list(range(10))
 
 
+def test_weighted_choice_returns_member():
+    rng = Rng(7)
+    options = ["a", "b", "c"]
+    for _ in range(50):
+        assert rng.weighted_choice(options, [1.0, 2.0, 3.0]) in options
+
+
+def test_weighted_choice_never_picks_zero_weight():
+    rng = Rng(7)
+    options = ["never", "always"]
+    for _ in range(100):
+        assert rng.weighted_choice(options, [0.0, 1.0]) == "always"
+
+
+def test_weighted_choice_respects_weights_distribution():
+    # Over many draws the empirical frequencies track the weights (1:3 here).
+    rng = Rng(7)
+    counts = {"a": 0, "b": 0}
+    for _ in range(4000):
+        counts[rng.weighted_choice(["a", "b"], [1.0, 3.0])] += 1
+    ratio = counts["b"] / counts["a"]
+    assert 2.5 < ratio < 3.5  # ~3, with sampling slack
+
+
+def test_weighted_choice_is_reproducible():
+    seq, weights = ["x", "y", "z"], [1.0, 1.0, 1.0]
+    a = [Rng(11).weighted_choice(seq, weights) for _ in range(1)]
+    b = [Rng(11).weighted_choice(seq, weights) for _ in range(1)]
+    assert a == b
+
+
+@pytest.mark.parametrize("seq, weights", [
+    (["a", "b"], [1.0]),          # length mismatch
+    ([], []),                     # empty
+    (["a", "b"], [0.0, 0.0]),     # non-positive total
+    (["a", "b"], [-1.0, 2.0]),    # negative weight
+])
+def test_weighted_choice_validates(seq, weights):
+    with pytest.raises(ValueError):
+        Rng(7).weighted_choice(seq, weights)
+
+
 def test_gauss_is_reproducible():
     a = Rng(7)
     b = Rng(7)

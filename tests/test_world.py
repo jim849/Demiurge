@@ -630,19 +630,34 @@ def test_omnivore_gains_less_than_herbivore_from_same_plant():
 # --- PredationParams ----------------------------------------------------------
 
 def test_predation_params_sets_fields():
-    pp = PredationParams(size_ratio=1.2, body_value_coeff=0.3)
-    assert pp.size_ratio == 1.2
+    pp = PredationParams(kill_ratio_midpoint=1.3, kill_ratio_steepness=4.0, body_value_coeff=0.3)
+    assert pp.kill_ratio_midpoint == 1.3
+    assert pp.kill_ratio_steepness == 4.0
     assert pp.body_value_coeff == 0.3
 
 
 @pytest.mark.parametrize("kwargs", [
-    dict(size_ratio=0.0, body_value_coeff=0.3),    # ratio must be positive
-    dict(size_ratio=-1.0, body_value_coeff=0.3),
-    dict(size_ratio=1.2, body_value_coeff=-0.1),   # coeff may be 0 but not negative
+    dict(kill_ratio_midpoint=0.0, kill_ratio_steepness=4.0, body_value_coeff=0.3),   # midpoint > 0
+    dict(kill_ratio_midpoint=-1.0, kill_ratio_steepness=4.0, body_value_coeff=0.3),
+    dict(kill_ratio_midpoint=1.3, kill_ratio_steepness=0.0, body_value_coeff=0.3),   # steepness > 0
+    dict(kill_ratio_midpoint=1.3, kill_ratio_steepness=4.0, body_value_coeff=-0.1),  # coeff >= 0
 ])
 def test_predation_params_validates(kwargs):
     with pytest.raises(ValueError):
         PredationParams(**kwargs)
+
+
+def test_kill_probability_is_logistic_in_size_ratio():
+    pp = PredationParams(kill_ratio_midpoint=1.3, kill_ratio_steepness=4.0, body_value_coeff=0.3)
+    # Coin flip exactly at the midpoint ratio (hunter = 1.3 * prey).
+    assert pp.kill_probability(1.3, 1.0) == pytest.approx(0.5)
+    # Monotonically rising with the size ratio.
+    assert pp.kill_probability(2.0, 1.0) > pp.kill_probability(1.3, 1.0) > pp.kill_probability(1.0, 1.0)
+    # Below the midpoint: under 0.5 but never zero -- a smaller hunter can still kill.
+    p_smaller = pp.kill_probability(0.7, 1.0)
+    assert 0.0 < p_smaller < 0.5
+    # Bounded above by 1, never certain even for a huge advantage.
+    assert pp.kill_probability(100.0, 1.0) < 1.0
 
 
 # --- predation: carnivores eating prey ---------------------------------------
@@ -661,14 +676,22 @@ class _PreyEaterBrain(DecisionMaker):
         return MoveAction(direction=Vector(1.0, 0.0), speed_fraction=0.0)
 
 
-def _hunter_world(size=_BIG, *, predation=True) -> World:
+# A near-deterministic predation rule for MECHANISM tests: a very high steepness turns
+# the smooth kill probability back into an effective hard gate at the midpoint, so a
+# clear size advantage kills with p=1.0 and a clear disadvantage with p=0.0. This lets
+# the meal-value / contact / contest tests assert exact outcomes; the PROBABILISTIC
+# kill itself is covered by test_kill_probability_is_logistic_in_size_ratio above.
+_CERTAIN = PredationParams(kill_ratio_midpoint=1.1, kill_ratio_steepness=80.0, body_value_coeff=0.3)
+
+
+def _hunter_world(size=_BIG, *, predation=True, predation_params=_CERTAIN) -> World:
     return World(
         size,
         Rng(config.DEFAULT_SEED),
         schema=config.GENOME_SCHEMA,
         phenotype_params=config.PHENOTYPE_PARAMS,
         brain_factory=lambda g: _PreyEaterBrain(),
-        predation_params=config.PREDATION_PARAMS if predation else None,
+        predation_params=predation_params if predation else None,
     )
 
 
@@ -680,25 +703,13 @@ def test_carnivore_eats_adjacent_prey_and_gains_energy():
     w = _hunter_world()
     hunter = w.spawn_agent(_genome(**_HUNT), _ORIGIN, heading=Vector(1.0, 0.0), energy=100.0)
     prey = w.spawn_agent(_genome(size=0.2, diet=0.0), _ORIGIN + Vector(4.0, 0.0), energy=80.0)
-    coeff = config.PREDATION_PARAMS.body_value_coeff
+    coeff = _CERTAIN.body_value_coeff
     meal = 80.0 + coeff * prey.phenotype.body_radius ** 2   # reserves + structural biomass
     gain = hunter.phenotype.prey_gain * meal
     rest = hunter.phenotype.resting_cost
     w.tick()
     assert prey.id not in w.agents                          # killed and reaped
     assert hunter.energy == pytest.approx(100.0 + gain - rest)
-
-
-def test_predation_requires_size_advantage():
-    w = _hunter_world()
-    # hunter only marginally bigger: 0.5 is not > 1.1 * 0.48, so no kill
-    hunter = w.spawn_agent(_genome(size=0.5, diet=1.0, vision_focus=0.0, vision_budget=1.0),
-                           _ORIGIN, heading=Vector(1.0, 0.0), energy=100.0)
-    prey = w.spawn_agent(_genome(size=0.48, diet=0.0), _ORIGIN + Vector(4.0, 0.0), energy=80.0)
-    rest = hunter.phenotype.resting_cost
-    w.tick()
-    assert prey.id in w.agents                              # survives: edge too small
-    assert hunter.energy == pytest.approx(100.0 - rest)
 
 
 def test_predation_requires_contact_world_is_authoritative():
@@ -730,7 +741,7 @@ def test_meal_value_includes_prey_body_not_just_energy():
     hunter = w.spawn_agent(_genome(size=1.0, diet=1.0, vision_focus=0.0, vision_budget=1.0),
                            _ORIGIN, heading=Vector(1.0, 0.0), energy=100.0)
     prey = w.spawn_agent(_genome(size=0.6, diet=0.0), _ORIGIN + Vector(3.0, 0.0), energy=0.5)
-    coeff = config.PREDATION_PARAMS.body_value_coeff
+    coeff = _CERTAIN.body_value_coeff
     structural = coeff * prey.phenotype.body_radius ** 2
     gain = hunter.phenotype.prey_gain * (0.5 + structural)
     rest = hunter.phenotype.resting_cost
@@ -767,7 +778,7 @@ def test_prey_cannot_flee_within_the_same_tick():
 
     w = World(_BIG, Rng(config.DEFAULT_SEED), schema=config.GENOME_SCHEMA,
               phenotype_params=config.PHENOTYPE_PARAMS, brain_factory=factory,
-              predation_params=config.PREDATION_PARAMS)
+              predation_params=_CERTAIN)
     hunter = w.spawn_agent(_genome(**_HUNT), _ORIGIN, heading=Vector(1.0, 0.0), energy=100.0)
     prey = w.spawn_agent(_genome(size=0.2, diet=0.0), _ORIGIN + Vector(4.0, 0.0), energy=80.0)
     w.tick()

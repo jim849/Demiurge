@@ -27,6 +27,7 @@ The two-phase tick (decide -> resolve) and the data-recording hook land next.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Callable
 
@@ -117,8 +118,19 @@ class PredationParams:
     config number, but keeping two sources lets a future brain misjudge a kill while
     the world still adjudicates correctly ("brain proposes, world disposes").
 
-    - `size_ratio`: a predator must exceed `size_ratio` times the prey's `size` gene to
-      make the kill.
+    A kill is no longer a hard size gate but a PROBABILITY that rises smoothly with
+    the size ratio `r = hunter_size / prey_size`, a logistic on the log-ratio (the
+    standard ecological shape, since predator/prey size scales multiplicatively):
+
+        p_kill = 1 / (1 + (kill_ratio_midpoint / r) ** kill_ratio_steepness)
+
+    so a much larger hunter is near-certain, equal size is a long shot, and a hunter
+    SMALLER than its prey still has a small (never zero) chance. This makes the size
+    gene a continuous determinant of predation rather than a cliff edge.
+
+    - `kill_ratio_midpoint`: the size ratio at which the kill is a coin flip (p=0.5).
+    - `kill_ratio_steepness`: how sharply p rises around the midpoint (higher = closer
+      to the old hard gate).
     - `body_value_coeff`: a slain prey is worth its energy reserves PLUS structural
       biomass `body_value_coeff * body_radius**2` (area ~ mass in 2D), so a large prey
       is a big meal even when starving ("a camel starved to death still outweighs a
@@ -128,14 +140,26 @@ class PredationParams:
       by growth-as-an-energy-account + a decomposer loop (see the conservation backlog).
     """
 
-    size_ratio: float
+    kill_ratio_midpoint: float
+    kill_ratio_steepness: float
     body_value_coeff: float
 
     def __post_init__(self) -> None:
-        if self.size_ratio <= 0:
-            raise ValueError("predation size_ratio must be positive")
+        if self.kill_ratio_midpoint <= 0:
+            raise ValueError("predation kill_ratio_midpoint must be positive")
+        if self.kill_ratio_steepness <= 0:
+            raise ValueError("predation kill_ratio_steepness must be positive")
         if self.body_value_coeff < 0:
             raise ValueError("predation body_value_coeff cannot be negative")
+
+    def kill_probability(self, hunter_size: float, prey_size: float) -> float:
+        """Probability that a hunter of `hunter_size` kills prey of `prey_size`.
+
+        Logistic on the log of the size ratio (see class docstring). Returns a value
+        in (0, 1): always some chance, never a guarantee.
+        """
+        ratio = hunter_size / prey_size
+        return 1.0 / (1.0 + (self.kill_ratio_midpoint / ratio) ** self.kill_ratio_steepness)
 
 
 # --- the world ----------------------------------------------------------------
@@ -605,12 +629,21 @@ class World:
     def _resolve_predation(self, prey_intents: list[tuple[int, int]], rng: Rng) -> None:
         """Resolve carnivory. No-op without a predation economy (`predation_params`).
 
-        The world re-verifies what the brain only believed: the hunter must still be
-        alive, big enough (`size > size_ratio * prey.size`), and in contact (at
-        tick-start positions). A prey already eaten this tick is skipped -- no double
-        kill. When several qualified hunters reach one prey, a fair RNG draw picks the
-        winner; it gains `prey_gain * (prey.energy + body_value_coeff * body_radius**2)`
-        and the prey is marked dead (reaped at end of tick).
+        Two stages (the kill is a probability, not a hard size gate -- see
+        PredationParams.kill_probability):
+
+        1. **The hunt**: every still-alive hunter in contact with the prey rolls its
+           own `kill_probability(hunter_size, prey_size)`. Failures drop out. With
+           several hunters this makes the prey's survival `prod(1 - p_i)` -- a swarm
+           is harder to escape (an emergent group-hunting effect).
+        2. **The carcass**: among the hunters that succeeded, one is drawn with
+           probability proportional to its size (the bigger dominates the kill, but
+           a smaller success still has a chance). It gains
+           `prey_gain * (prey.energy + body_value_coeff * body_radius**2)`; the prey
+           is marked dead (reaped at end of tick). The others go hungry this tick.
+
+        The world re-verifies what the brain only believed (still alive, in contact at
+        tick-start positions); a prey already eaten this tick is skipped (no double kill).
         """
         pp = self._predation_params
         if pp is None or not prey_intents:
@@ -626,18 +659,25 @@ class World:
                 continue  # already eaten this tick -> no double kill
             prey_size = prey.genome.get("size")
             prey_radius = prey.phenotype.body_radius
-            contenders = []
-            for hid in hunters_by_prey[prey_id]:
+            # Stage 1: each in-contact hunter rolls its own kill chance.
+            successes: list[int] = []
+            for hid in sorted(hunters_by_prey[prey_id]):  # deterministic draw order
                 hunter = self.agents.get(hid)
                 if hunter is None or not hunter.alive:
                     continue  # a hunter that was itself eaten this tick can't feed
-                if hunter.genome.get("size") <= pp.size_ratio * prey_size:
-                    continue  # not enough of a size advantage
-                if self._in_contact(hunter, prey.position, prey_radius):
-                    contenders.append(hid)
-            if not contenders:
+                if not self._in_contact(hunter, prey.position, prey_radius):
+                    continue
+                p_kill = pp.kill_probability(hunter.genome.get("size"), prey_size)
+                if rng.boolean(p_kill):
+                    successes.append(hid)
+            if not successes:
                 continue
-            winner_id = contenders[0] if len(contenders) == 1 else rng.choice(contenders)
+            # Stage 2: the carcass goes to one successful hunter, weighted by size.
+            if len(successes) == 1:
+                winner_id = successes[0]
+            else:
+                sizes = [self.agents[hid].genome.get("size") for hid in successes]
+                winner_id = rng.weighted_choice(successes, sizes)
             winner = self.agents[winner_id]
             meal = prey.energy + pp.body_value_coeff * prey_radius * prey_radius
             winner.add_energy(winner.phenotype.prey_gain * meal)
