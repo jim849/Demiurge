@@ -21,6 +21,7 @@ from statistics import fmean
 import config
 from core.decision.rule_based import RuleBasedBrain
 from core.genome import Genome
+from core.recording import Recorder, TimeSeriesRecorder
 from core.reproduction.asexual import AsexualReproduction
 from core.rng import Rng
 from core.vector import Vector
@@ -28,7 +29,12 @@ from core.world import World, random_unit_vector
 from demiurge.interventions import Demiurge
 
 
-def build_world(seed: int, *, seed_plan: dict[str, int] | None = None) -> World:
+def build_world(
+    seed: int,
+    *,
+    seed_plan: dict[str, int] | None = None,
+    recorder: Recorder | None = None,
+) -> World:
     """Assemble a World from config: brains, plants, predation, reproduction.
 
     With `seed_plan` (morph name -> count), the world is filled with coherent,
@@ -51,6 +57,7 @@ def build_world(seed: int, *, seed_plan: dict[str, int] | None = None) -> World:
         reproducer=AsexualReproduction(),
         offspring_placement_factor=config.OFFSPRING_PLACEMENT_FACTOR,
         spatial_cell_size=config.SPATIAL_CELL_SIZE,
+        recorder=recorder,
     )
     if seed_plan is None:
         world.populate(config.INITIAL_AGENT_COUNT, initial_energy=config.INITIAL_AGENT_ENERGY)
@@ -95,8 +102,9 @@ _DIET_CARN_MIN = 0.6
 def _stats_line(world: World) -> str:
     """One line of live population stats.
 
-    Reads live agents (not the snapshot) because generation is not part of
-    AgentSnapshot -- it is a logic detail, not a rendering one.
+    Reads live agents directly -- this is the operator's at-a-glance console
+    read-out, independent of the recorder (which persists the same aggregates
+    from the snapshot when --csv is given).
     """
     agents = list(world.agents.values())
     n = len(agents)
@@ -134,8 +142,15 @@ def _resolve_seed_plan(args: argparse.Namespace) -> dict[str, int] | None:
     return plan
 
 
-def run(ticks: int, seed: int, every: int, seed_plan: dict[str, int] | None = None) -> None:
-    world = build_world(seed, seed_plan=seed_plan)
+def run(
+    ticks: int,
+    seed: int,
+    every: int,
+    seed_plan: dict[str, int] | None = None,
+    csv_path: str | None = None,
+) -> None:
+    recorder = TimeSeriesRecorder() if csv_path is not None else None
+    world = build_world(seed, seed_plan=seed_plan, recorder=recorder)
     composition = "random" if seed_plan is None else ", ".join(f"{n}x{m}" for m, n in seed_plan.items())
     print(f"# Demiurge headless smoke run -- seed={seed}, ticks={ticks}, pop={composition}")
     print(_stats_line(world))  # tick 0: the starting world
@@ -148,6 +163,9 @@ def run(ticks: int, seed: int, every: int, seed_plan: dict[str, int] | None = No
             break
     else:
         print("# run complete")
+    if recorder is not None:
+        out = recorder.to_csv(csv_path)
+        print(f"# wrote {len(recorder.rows)} rows of time-series data to {out}")
 
 
 def main() -> None:
@@ -160,6 +178,8 @@ def main() -> None:
                         help="seed coherent morphs (config.SEED_PLAN) instead of a random population")
     parser.add_argument("--herb", type=int, default=None, help="override herbivore seed count (implies --seed-morph)")
     parser.add_argument("--carn", type=int, default=None, help="override carnivore seed count (implies --seed-morph)")
+    parser.add_argument("--csv", type=str, default=None, metavar="PATH",
+                        help="record per-tick population stats and write them to PATH as CSV (headless)")
     args = parser.parse_args()
 
     seed_plan = _resolve_seed_plan(args)
@@ -171,7 +191,8 @@ def main() -> None:
 
         run_render(build_world(args.seed, seed_plan=seed_plan))
     else:
-        run(ticks=args.ticks, seed=args.seed, every=args.every, seed_plan=seed_plan)
+        run(ticks=args.ticks, seed=args.seed, every=args.every, seed_plan=seed_plan,
+            csv_path=args.csv)
 
 
 if __name__ == "__main__":

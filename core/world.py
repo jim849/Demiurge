@@ -74,7 +74,8 @@ class AgentSnapshot:
 
     Carries what a renderer or recorder needs without exposing the live Agent:
     pose (`position`, `heading`, `body_radius`) for drawing, `size`/`diet` for
-    colour, `energy` for debug overlays, `alive` for filtering.
+    colour, `energy` for debug overlays, `alive` for filtering, `generation` for
+    lineage-depth metrics.
     """
 
     id: int
@@ -85,6 +86,7 @@ class AgentSnapshot:
     size: float
     diet: float
     alive: bool
+    generation: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -756,6 +758,7 @@ class World:
                 size=a.genome.get("size"),
                 diet=a.genome.get("diet"),
                 alive=a.alive,
+                generation=a.generation,
             )
             for a in self.agents.values()
         )
