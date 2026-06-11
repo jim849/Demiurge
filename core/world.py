@@ -374,6 +374,22 @@ class World:
         self.agents[agent.id] = agent
         return agent
 
+    def re_express_agent(self, agent: Agent) -> None:
+        """Rebuild an agent's phenotype AND brain from its current genome.
+
+        The creator-intervention path: after a gene is edited on a live agent
+        (demiurge/interventions.py), both the cached phenotype and the brain
+        instance are stale -- the brain bakes in the personality genes at
+        expression (方案甲). The World re-expresses both because it is the one
+        authority that holds the phenotype params and the brain factory; this is
+        the same expression `spawn_agent` does at birth, kept in a single place so
+        the two cannot drift. Body/metabolism edits change only the phenotype;
+        brain-gene edits change only the brain, but rebuilding both is cheap and
+        keeps the call correct regardless of which gene moved.
+        """
+        agent.re_express(self._phenotype_params)
+        agent.decision_maker = self._brain_factory(agent.genome)
+
     def populate(self, count: int, *, initial_energy: float) -> None:
         """Deterministically fill the world with `count` random agents.
 
