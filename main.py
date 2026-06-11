@@ -85,6 +85,13 @@ def _seed_morphs(world: World, seed: int, seed_plan: dict[str, int]) -> None:
             )
 
 
+# Diet-bucket boundaries for the stats read-out ONLY (a display classification, not
+# simulation logic): herbivore < HERB_MAX <= mid < CARN_MIN <= carnivore. Kept here,
+# not in config, because config holds simulation tunables -- these only label output.
+_DIET_HERB_MAX = 0.3
+_DIET_CARN_MIN = 0.6
+
+
 def _stats_line(world: World) -> str:
     """One line of live population stats.
 
@@ -96,12 +103,17 @@ def _stats_line(world: World) -> str:
     if n == 0:
         return f"tick {world.tick_count:>6} | EXTINCT"
     energy = fmean(a.energy for a in agents)
-    diet = fmean(a.genome.get("diet") for a in agents)
+    diets = [a.genome.get("diet") for a in agents]
+    diet = fmean(diets)
     size = fmean(a.genome.get("size") for a in agents)
     max_gen = max(a.generation for a in agents)
+    herb = sum(1 for d in diets if d < _DIET_HERB_MAX)
+    carn = sum(1 for d in diets if d >= _DIET_CARN_MIN)
+    mid = n - herb - carn
     return (
         f"tick {world.tick_count:>6} | agents {n:>5} | plants {len(world.plants):>4} | "
-        f"E {energy:6.1f} | diet {diet:4.2f} | size {size:4.2f} | gen {max_gen:>3}"
+        f"E {energy:6.1f} | diet {diet:4.2f} | size {size:4.2f} | gen {max_gen:>3} | "
+        f"herb {herb:>4} mid {mid:>4} carn {carn:>4}"
     )
 
 
