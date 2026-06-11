@@ -292,11 +292,30 @@ class World:
         and the unit direction to the target, so it is dimension-agnostic (a 2D
         sector now, a 3D cone later). An entity in contact (same spot) is always
         visible.
+
+        Hot path (profiled at ~87% of headless runtime): the spatial grid hands us
+        whole cells, so most candidates fail the range test. We therefore compute
+        the minimum-image delta and its squared length on the raw component tuples
+        in one pass and bail out BEFORE constructing any Vector for out-of-range
+        candidates -- the common case. Survivors build the Vector once and reuse the
+        exact original FOV ops, so every result stays bit-identical (the per-axis
+        wrap math mirrors `toroidal_delta`, and the accumulation order matches
+        `length_squared`'s `sum`), preserving deterministic reproducibility (iron
+        law 7). The zip keeps it dimension-agnostic (iron law 3).
         """
-        rel = self.toroidal_delta(observer, target)
-        dist_sq = rel.length_squared()
+        deltas = []
+        dist_sq = 0.0
+        for o, t, extent in zip(
+            observer._components, target._components, self.size._components
+        ):
+            d = (t - o) % extent          # in [0, extent)
+            if d > extent / 2.0:
+                d -= extent               # wrapping backwards is shorter
+            deltas.append(d)
+            dist_sq += d * d
         if dist_sq > range_sq:
             return None
+        rel = Vector(*deltas)
         if dist_sq > 0.0 and heading_unit.dot(rel.normalized()) < cos_half:
             return None
         return rel
