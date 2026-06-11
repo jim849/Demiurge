@@ -100,4 +100,64 @@ Kept as a sound rebalance even where they didn't by themselves produce carnivore
 - `PHENOTYPE_PARAMS.herb_exp / carn_exp`: **1.5** (convex — disruptive-selection prerequisite)
 - `WORLD_SIZE`: 1000×1000 → **400×400** (with `SPATIAL_CELL_SIZE` 100 → 50)
 - `BRAIN_PARAMS.predation_size_ratio`: 1.2 → **1.1**
-- `PREDATION_PARAMS.size_ratio`: 1.2 → **1.1**
+- `PREDATION_PARAMS`: the hard `size_ratio=1.1` gate was later **replaced** by a
+  probabilistic kill (see the next section); the brain still keeps its 1.1 belief.
+
+---
+
+## Toward coexistence: three mechanisms, and why boom-bust is the realistic floor
+
+After the morphs above confirmed that seeded carnivores are viable but always
+crash, we added three mechanisms (each its own commit), prioritising **realism**.
+All are headless-measured on the seeded run (`--seed-morph`, seed 20260609).
+
+**① Conservative assimilation** (`carn_max` 1.5→1.0, `herb_max` 1.0→0.8): a meal can
+only lose energy in transfer, never multiply it. Removed the "meat creates energy"
+source; the herbivore base now survives instead of the whole system dying.
+
+**② Size-scaled reproduction cost**: `repro_threshold_energy` gains
+`repro_size_cost_coeff * body_radius**2` (an offspring is a body; biomass ~size²,
+the same shape as the predation meal). Carnivore threshold 110 → ~207, so one kill
+(80→151) no longer triggers a birth — a reproductive lag that brakes the "eat one =
+breed one" overshoot. The r/K difference now *emerges* from the size gene.
+
+**③ Probabilistic predation (replaces the hard size gate)**: kill probability is a
+logistic on the log size-ratio `r = hunter/prey`,
+`p = 1/(1+(midpoint/r)**steepness)` (midpoint 1.3, steepness 4.0). Carnivore vs
+herbivore (r~2.6) ≈ 0.94; equal size ≈ 0.26; a smaller hunter still ≈ 0.08 (never 0).
+Contested prey resolves in two stages: each in-contact hunter rolls its own chance
+(a swarm is harder to escape), then the carcass goes to one success drawn ∝ size.
+
+**④ Holling II handling time**: a kill starts a `handling_time`-tick digesting
+cooldown during which the predator can't kill again — caps each predator's kill rate.
+
+**Combined effect (seed 20260609, 270 herb : carn seeded):**
+
+| stage | outcome |
+|---|---|
+| before (hard gate, carn_max 1.5) | total extinction, fast |
+| ①+②+③ | total-extinction → **predator boom-bust + herbivore recovery** |
+| +④ handling_time=10 | predator persistence ~tick 154 → **~335** (≈2×) |
+
+**Sweeps that came up empty (no stable coexistence):**
+
+- `repro_size_cost_coeff` ∈ {1.2…6.0} × carn0 {30,15}, 3000 ticks: only shifts
+  carnivore death time ~150→~240; coeff too high (6.0) → total extinction
+  (over-hunts without breeding). **Wrong knob** — repro cost changes *how many*
+  predators, not *how fast* they deplete prey.
+- `handling_time` ∈ {0…30} × carn0 {30,15}: best is H≈10 (death ~335); higher H
+  kills predators *earlier* (can't feed). Caps kill rate but can't stop the
+  in-sync crash.
+- World size at constant density (`s` = 1,2,3,4; H=10): death 335 → 822 (s=2) then
+  **saturates** (817, 733 at s=3,4). Bigger space helps, but uniform seeding +
+  identical dynamics keep all patches *in phase* — no spatial asynchrony, so no
+  metapopulation rescue.
+
+**Conclusion.** The mechanisms are correct and realistic, and they turn total
+collapse into a boom-bust with prey recovery — itself a valid ecological outcome.
+But **stable predator-prey coexistence does not fall out of parameter tuning**: a
+well-mixed system collapses in sync (cf. Huffaker's mite experiments — coexistence
+needed spatial structure + asynchrony). Sustained coexistence is therefore deferred
+to a later spatial/resource-patch milestone, not chased with config knobs now.
+M1's bar — the world is *alive and evolving* — is met (herbivores persist and
+generations advance).

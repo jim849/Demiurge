@@ -260,7 +260,38 @@ new `metab_size_exponent=0.75` (Kleiber economy of scale — big bodies cheaper 
 unit upkeep, so large predators can pay off against ∝size² predation returns);
 diet `herb_exp=carn_exp=1.5` (convex — the disruptive-selection prerequisite);
 `WORLD_SIZE` 1000→400 (+ `SPATIAL_CELL_SIZE` 100→50); predation `size_ratio`
-1.2→1.1 in both `BRAIN_PARAMS` and `PREDATION_PARAMS`.
+1.2→1.1 in both `BRAIN_PARAMS` and `PREDATION_PARAMS` (the world-side hard gate was
+later *replaced* by a probabilistic kill — see the next entry).
+
+**Decision log — predator–prey balance: three realism mechanisms, and boom-bust as
+the realistic floor (2026-06).** With seeded morphs in place, we tuned the balance
+band, prioritising realism. Three mechanisms were added (each its own commit; full
+sweeps in `notes/ecology_experiments.md`):
+
+1. **Conservative assimilation** (`carn_max` 1.5→1.0, `herb_max` 1.0→0.8): a meal can
+   only lose energy in transfer, never multiply it. Herbivore base now survives.
+2. **Size-scaled reproduction cost**: `repro_threshold_energy +=
+   repro_size_cost_coeff·body_radius²` (an offspring is a body, biomass ~size², the
+   same shape as the predation meal). Carnivore threshold 110→~207, so one kill no
+   longer = one birth — a reproductive lag that brakes the overshoot, and the r/K
+   difference now *emerges* from the size gene rather than being stipulated by diet.
+3. **Probabilistic predation** (replaces the hard size gate): kill chance is a
+   logistic on the log size-ratio, `p = 1/(1+(midpoint/r)^steepness)` (1.3, 4.0) — so
+   size *continuously* shapes predation; a smaller hunter still has a small chance.
+   Contested prey: each hunter rolls independently (swarm effect), carcass drawn ∝size.
+4. **Holling II handling time**: a kill starts a digesting cooldown that caps each
+   predator's kill rate (the standard density-dependent brake).
+
+**Result:** these turned *total extinction* into a **predator boom-bust + herbivore
+recovery**; handling time roughly doubled predator persistence (~tick 154→335). But
+**stable coexistence did not emerge from tuning**: sweeps of repro cost, handling
+time, and world size all failed (gains saturate; a well-mixed system crashes *in
+sync*). This matches ecology — coexistence classically needs spatial structure +
+asynchrony (Huffaker). **Decision: accept boom-bust as a valid M1 outcome** (the
+world is alive and evolving — herbivores persist, generations advance) and **defer
+stable coexistence to a later spatial/resource-patch milestone**, rather than chase
+it with config knobs. New tunables added: `repro_size_cost_coeff`,
+`PREDATION_PARAMS.{kill_ratio_midpoint, kill_ratio_steepness, handling_time}`.
 
 ---
 
