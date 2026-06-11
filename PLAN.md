@@ -175,7 +175,9 @@ inference; mitigation is that the World may gather/batch behind the unchanged
 ---
 
 ## Milestone 1: Core Loop
-**Status:** In progress — headless core loop runs end-to-end (no rendering / eat / reproduce yet)
+**Status:** Complete — full cycle runs (energy→move→eat→reproduce→mutate→die), a
+pygame window renders it with click-to-inspect, and the creator channel can read/
+edit genes and spawn agents. All four completion criteria met; tests green.
 
 Get the full cycle running: **energy → move → eat → reproduce → mutate → die**
 
@@ -218,8 +220,28 @@ Completion criteria:
   (investment→1) and non-viable (investment→0) offspring are left as self-judging
   outcomes; population is capped only by the energy supply, not a hard limit.
 
-**Still to do for M1:** `main.py` headless smoke run; rendering layer (pygame,
-iron laws 1–4) + click-to-inspect; creator console hooks.
+**Render + tooling (completes M1):**
+- `main.py` — headless smoke run (periodic population stats) + `--render` window.
+- `render/projection.py` + `render/view.py` — pygame view (iron laws 1–2): draws
+  the snapshot only, diet-coloured bodies, heading lines, side stats panel. Decouples
+  sim stepping from frame rate (watch a fast world by slowing the display).
+- **Click-to-inspect (iron law 4):** selection is logic state on the World
+  (`select(id)`, carried in the snapshot, auto-cleared when the target dies); the
+  render layer hit-tests a click (`pick_agent`, body radius floored to the min
+  on-screen radius so tiny agents stay clickable) and shows the selected agent's
+  id/energy/generation + full gene map. The selected agent's genes ride the snapshot
+  *for that one agent only*, keeping the per-tick path cheap.
+- **Creator channel** (`demiurge/interventions.py`): `read_genes`, `edit_gene`,
+  `create_agent` — manual gene editing and from-nothing agent creation (the
+  console/config form the constitution asks for; also drives the seed-morph harness).
+- `core/recording.py` — `TimeSeriesRecorder`: per-tick aggregates (population,
+  plants, mean energy/diet/size, max generation, diet-bucket counts) in memory with
+  CSV export (`main.py --csv`); the real fill-in behind the iron-law-6 seam.
+- **Perf:** `perceive` was ~87% of headless runtime — not algorithm (the spatial
+  grid keeps it ~O(N)) but Vector per-op overhead. Inlining `_visible_delta`'s
+  min-image delta + range test on raw components (skipping Vector construction for
+  out-of-range candidates) cut a 1000-tick run ~40%, bit-identical (reproducibility
+  preserved).
 
 **Decision log — niche differentiation: carnivory cannot emerge gradually
 (2026-06).** A run of ~11 controlled tuning experiments (full table + seed morphs
