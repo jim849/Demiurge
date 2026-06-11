@@ -148,10 +148,25 @@ cooldown during which the predator can't kill again — caps each predator's kil
 - `handling_time` ∈ {0…30} × carn0 {30,15}: best is H≈10 (death ~335); higher H
   kills predators *earlier* (can't feed). Caps kill rate but can't stop the
   in-sync crash.
-- World size at constant density (`s` = 1,2,3,4; H=10): death 335 → 822 (s=2) then
-  **saturates** (817, 733 at s=3,4). Bigger space helps, but uniform seeding +
-  identical dynamics keep all patches *in phase* — no spatial asynchrony, so no
-  metapopulation rescue.
+- World size at constant density (`s` = 1,2,3,4; H=10): death 335 → **822 (s=2)**
+  then **peaks and falls back** (817, 733 at s=3,4) — not a plateau but a reversal.
+  Closer analysis of why (the decisive point): the sweep scales **area *and*
+  population** by `s²` together, and the two fight over synchrony.
+    - Sanity check first: end `n/area` is ~constant (162, 140, 150, 150), so the
+      plant-carrying-capacity scaling is sound — the reversal is real dynamics, not
+      a broken-scaling artefact.
+    - Movement/vision are fixed in *absolute* units, so a bigger world shrinks the
+      **relative dispersal range** → mild Huffaker-style asynchrony. This is the
+      s=1→2 gain (335→822).
+    - But scaling the population up means large-N averaging *erases* the local
+      demographic fluctuations that could have rescued a patch → the system trends
+      toward the **mean-field Lotka–Volterra** limit (synchronous collapse). Past
+      s=2 this term dominates and death time **declines**.
+    - Net: "just make the world bigger" is self-cancelling — the space you add is
+      re-coupled by the population you add with it. The reversal (not a plateau)
+      rules the knob out cleanly. The real control variable is *dispersal range ÷
+      world size* plus **discrete patches with limited inter-patch migration**, not
+      a larger homogeneous arena.
 
 **Conclusion.** The mechanisms are correct and realistic, and they turn total
 collapse into a boom-bust with prey recovery — itself a valid ecological outcome.
