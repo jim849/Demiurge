@@ -60,6 +60,11 @@ class PhenotypeParams:
     # Reproduction
     repro_min: float             # energy threshold at repro_threshold gene = 0
     repro_max: float             # energy threshold at repro_threshold gene = 1
+    repro_size_cost_coeff: float # extra threshold per body_radius**2: an offspring is
+                                 # a BODY (biomass ~ size**2), so bigger parents must
+                                 # store more before they can build one. Mirrors the
+                                 # predation body_value_coeff * body_radius**2 shape --
+                                 # the same ruler measures meat eaten and meat built.
 
     # Diet (single axis). Peaks set by *_max; specialization sharpness by *_exp.
     herb_max: float              # peak plant-eating efficiency (pure herbivore)
@@ -139,9 +144,17 @@ def express(genome: Genome, params: PhenotypeParams) -> Phenotype:
         + params.vision_cost_coeff * vision_budget
     )
 
-    # Reproduction threshold: map normalized gene to a real energy amount.
-    repro_threshold_energy = params.repro_min + repro_threshold * (
-        params.repro_max - params.repro_min
+    # Reproduction threshold: a gene-set buffer PLUS a body-size build cost. The
+    # buffer (repro_min..repro_max) is a size-neutral reserve the agent chooses to
+    # store; the size term adds the cost of building an offspring's body, which
+    # scales with biomass (~ body_radius**2, same shape as the predation meal). So
+    # a large carnivore needs materially more energy to breed than a small
+    # herbivore -- a reproductive lag that brakes the predator overshoot (one kill
+    # no longer equals one birth) WITHOUT stipulating it from the diet label.
+    repro_threshold_energy = (
+        params.repro_min
+        + repro_threshold * (params.repro_max - params.repro_min)
+        + params.repro_size_cost_coeff * (body_radius ** 2)
     )
 
     # Diet: single axis, non-linear. Can't be good at both (uses diet vs 1-diet).

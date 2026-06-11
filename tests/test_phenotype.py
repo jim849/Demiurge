@@ -5,6 +5,7 @@ separation (re-expression after a gene change).
 """
 
 import math
+from dataclasses import replace
 
 import pytest
 
@@ -29,6 +30,7 @@ _P = PhenotypeParams(
     vision_range_exponent=0.5,
     repro_min=50.0,
     repro_max=150.0,
+    repro_size_cost_coeff=0.0,  # off by default so the gene-mapping test stays pure
     herb_max=1.0,
     carn_max=1.5,
     herb_exp=1.5,
@@ -207,6 +209,18 @@ def test_repro_threshold_maps_normalized_to_energy():
     assert express(_genome(repro_threshold=0.0), _P).repro_threshold_energy == pytest.approx(50.0)
     assert express(_genome(repro_threshold=1.0), _P).repro_threshold_energy == pytest.approx(150.0)
     assert express(_genome(repro_threshold=0.5), _P).repro_threshold_energy == pytest.approx(100.0)
+
+
+def test_repro_threshold_adds_size_build_cost():
+    # An offspring is a body: the threshold gains repro_size_cost_coeff * body_radius**2
+    # on top of the gene buffer, so a bigger parent must store more to breed.
+    params = replace(_P, repro_size_cost_coeff=1.2)
+    small = express(_genome(repro_threshold=0.0, size=0.35), params)
+    big = express(_genome(repro_threshold=0.0, size=0.9), params)
+    # body_radius = body_radius_unit(10) * size; buffer = repro_min(50) at gene 0.
+    assert small.repro_threshold_energy == pytest.approx(50.0 + 1.2 * (10.0 * 0.35) ** 2)
+    assert big.repro_threshold_energy == pytest.approx(50.0 + 1.2 * (10.0 * 0.9) ** 2)
+    assert big.repro_threshold_energy > small.repro_threshold_energy
 
 
 def test_offspring_investment_passthrough():

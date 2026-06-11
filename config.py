@@ -91,6 +91,13 @@ PHENOTYPE_PARAMS = PhenotypeParams(
     # Reproduction
     repro_min=50.0,
     repro_max=200.0,
+    # Body-size build cost for an offspring: extra threshold = coeff * body_radius**2
+    # (an offspring is a body; biomass ~ size**2, the same shape as the predation
+    # meal's structural term). This gives larger morphs a reproductive lag -- a
+    # carnivore (body_radius**2 ~ 81) needs ~97 more stored energy than the gene
+    # buffer alone, so a single kill no longer triggers a birth, braking the
+    # predator overshoot. Starting point, to be tuned by observation.
+    repro_size_cost_coeff=1.2,
     # Diet: peak ASSIMILATION efficiencies (fraction of a food's energy the eater
     # keeps). Both <= 1 -> conservative: a meal can only LOSE energy in transfer,
     # never multiply it (this removes the old carn_max=1.5 "meat creates energy"
