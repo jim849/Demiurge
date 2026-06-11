@@ -138,11 +138,16 @@ class PredationParams:
       `prey_gain` (carn_max <= 1, so assimilation never multiplies energy); the
       structural-biomass term is the remaining non-conservation, to be closed later
       by growth-as-an-energy-account + a decomposer loop (see the conservation backlog).
+    - `handling_time` (Holling type II): ticks a predator must spend "digesting" a
+      kill before it can make another. This CAPS each predator's kill rate, so a dense
+      prey population can't be consumed instantly -- the negative feedback that keeps a
+      predator boom from driving prey (and then itself) to extinction. 0 = uncapped.
     """
 
     kill_ratio_midpoint: float
     kill_ratio_steepness: float
     body_value_coeff: float
+    handling_time: int = 0
 
     def __post_init__(self) -> None:
         if self.kill_ratio_midpoint <= 0:
@@ -151,6 +156,8 @@ class PredationParams:
             raise ValueError("predation kill_ratio_steepness must be positive")
         if self.body_value_coeff < 0:
             raise ValueError("predation body_value_coeff cannot be negative")
+        if self.handling_time < 0:
+            raise ValueError("predation handling_time cannot be negative")
 
     def kill_probability(self, hunter_size: float, prey_size: float) -> float:
         """Probability that a hunter of `hunter_size` kills prey of `prey_size`.
@@ -523,6 +530,7 @@ class World:
             if not agent.alive:
                 continue
             agent.advance_age()
+            agent.advance_digestion()  # tick down the predation handling cooldown
             agent.spend_energy(agent.phenotype.resting_cost)
             if agent.energy <= 0.0:
                 agent.mark_dead()
@@ -659,12 +667,14 @@ class World:
                 continue  # already eaten this tick -> no double kill
             prey_size = prey.genome.get("size")
             prey_radius = prey.phenotype.body_radius
-            # Stage 1: each in-contact hunter rolls its own kill chance.
+            # Stage 1: each in-contact, not-digesting hunter rolls its own kill chance.
             successes: list[int] = []
             for hid in sorted(hunters_by_prey[prey_id]):  # deterministic draw order
                 hunter = self.agents.get(hid)
                 if hunter is None or not hunter.alive:
                     continue  # a hunter that was itself eaten this tick can't feed
+                if not hunter.can_hunt:
+                    continue  # still digesting a previous kill (Holling handling time)
                 if not self._in_contact(hunter, prey.position, prey_radius):
                     continue
                 p_kill = pp.kill_probability(hunter.genome.get("size"), prey_size)
@@ -681,6 +691,7 @@ class World:
             winner = self.agents[winner_id]
             meal = prey.energy + pp.body_value_coeff * prey_radius * prey_radius
             winner.add_energy(winner.phenotype.prey_gain * meal)
+            winner.start_digesting(pp.handling_time)  # Holling II: cap the kill rate
             prey.mark_dead()
 
     # --- reproduction ---------------------------------------------------------

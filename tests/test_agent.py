@@ -110,6 +110,32 @@ def test_mark_dead():
     assert a.alive is False
 
 
+def test_digestion_cooldown_lifecycle():
+    a = _agent()
+    assert a.digest_cooldown == 0 and a.can_hunt is True
+    a.start_digesting(3)
+    assert a.digest_cooldown == 3 and a.can_hunt is False
+    a.advance_digestion()
+    assert a.digest_cooldown == 2 and a.can_hunt is False
+    a.advance_digestion(); a.advance_digestion()
+    assert a.digest_cooldown == 0 and a.can_hunt is True
+    a.advance_digestion()  # never goes negative
+    assert a.digest_cooldown == 0
+
+
+def test_start_digesting_extends_never_shortens():
+    a = _agent()
+    a.start_digesting(5)
+    a.start_digesting(2)          # a shorter meal does not cut an ongoing cooldown
+    assert a.digest_cooldown == 5
+
+
+def test_start_digesting_rejects_negative():
+    a = _agent()
+    with pytest.raises(ValueError):
+        a.start_digesting(-1)
+
+
 # --- re-expression after a gene edit -----------------------------------------
 
 def test_re_express_rebuilds_phenotype_after_gene_change():

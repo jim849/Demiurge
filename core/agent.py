@@ -53,6 +53,7 @@ class Agent:
         "generation",
         "alive",
         "decision_maker",
+        "digest_cooldown",
     )
 
     def __init__(
@@ -84,6 +85,10 @@ class Agent:
         self.age = 0
         self.generation = generation
         self.alive = True
+        # Predation handling time (Holling II): ticks the agent must still spend
+        # "digesting" a kill before it can make another. 0 = ready to hunt. Set by
+        # the world on a successful kill, decremented each tick.
+        self.digest_cooldown = 0
         # The brain. Optional at construction so tests / fixtures can build a bare
         # state container; the World assigns one (expressed from the genome) at
         # birth. Held as the abstract interface -> concrete brain stays swappable.
@@ -111,6 +116,22 @@ class Agent:
     def advance_age(self) -> None:
         """Increment age by one tick. Inert in v1; used by M6 life-history."""
         self.age += 1
+
+    def start_digesting(self, ticks: int) -> None:
+        """Begin a predation handling cooldown of `ticks` (extends, never shortens)."""
+        if ticks < 0:
+            raise ValueError("digestion ticks cannot be negative")
+        self.digest_cooldown = max(self.digest_cooldown, ticks)
+
+    def advance_digestion(self) -> None:
+        """Tick down the handling cooldown toward 0 (ready to hunt again)."""
+        if self.digest_cooldown > 0:
+            self.digest_cooldown -= 1
+
+    @property
+    def can_hunt(self) -> bool:
+        """True when not mid-digestion (handling time elapsed)."""
+        return self.digest_cooldown == 0
 
     def re_express(self, params: PhenotypeParams) -> None:
         """Rebuild the (immutable) phenotype from the current genome.

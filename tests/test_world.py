@@ -641,6 +641,7 @@ def test_predation_params_sets_fields():
     dict(kill_ratio_midpoint=-1.0, kill_ratio_steepness=4.0, body_value_coeff=0.3),
     dict(kill_ratio_midpoint=1.3, kill_ratio_steepness=0.0, body_value_coeff=0.3),   # steepness > 0
     dict(kill_ratio_midpoint=1.3, kill_ratio_steepness=4.0, body_value_coeff=-0.1),  # coeff >= 0
+    dict(kill_ratio_midpoint=1.3, kill_ratio_steepness=4.0, body_value_coeff=0.3, handling_time=-1),
 ])
 def test_predation_params_validates(kwargs):
     with pytest.raises(ValueError):
@@ -783,6 +784,44 @@ def test_prey_cannot_flee_within_the_same_tick():
     prey = w.spawn_agent(_genome(size=0.2, diet=0.0), _ORIGIN + Vector(4.0, 0.0), energy=80.0)
     w.tick()
     assert prey.id not in w.agents                          # caught despite fleeing
+
+
+# --- predation: Holling II handling time --------------------------------------
+
+class _RestBrain(DecisionMaker):
+    """Never acts (used for prey that should not hunt each other in a test)."""
+
+    def decide(self, perception, rng):
+        return MoveAction(direction=Vector(1.0, 0.0), speed_fraction=0.0)
+
+
+def test_handling_time_caps_kill_rate():
+    # After a kill the predator must "digest" for handling_time ticks before it can
+    # kill again -- so a second reachable prey is safe until the cooldown elapses.
+    pp = PredationParams(kill_ratio_midpoint=1.1, kill_ratio_steepness=80.0,
+                         body_value_coeff=0.3, handling_time=3)
+
+    def factory(genome):
+        return _PreyEaterBrain() if genome.get("diet") >= 0.5 else _RestBrain()
+
+    w = World(_BIG, Rng(config.DEFAULT_SEED), schema=config.GENOME_SCHEMA,
+              phenotype_params=config.PHENOTYPE_PARAMS, brain_factory=factory,
+              predation_params=pp)
+    hunter = w.spawn_agent(_genome(**_HUNT), _ORIGIN, heading=Vector(1.0, 0.0), energy=100.0)
+    p1 = w.spawn_agent(_genome(size=0.20, diet=0.0), _ORIGIN + Vector(3.0, 0.0), energy=80.0)
+    p2 = w.spawn_agent(_genome(size=0.25, diet=0.0), _ORIGIN + Vector(-3.0, 0.0), energy=80.0)
+
+    w.tick()  # tick 1: eats the smaller prey (p1), then enters the cooldown
+    assert p1.id not in w.agents
+    assert p2.id in w.agents
+    assert hunter.digest_cooldown == 2          # set to 3 on the kill, decremented once
+
+    w.tick(); w.tick()                          # ticks 2-3: still digesting -> p2 safe
+    assert p2.id in w.agents
+    assert hunter.digest_cooldown == 0
+
+    w.tick()                                    # tick 4: cooldown elapsed -> p2 taken
+    assert p2.id not in w.agents
 
 
 # --- plant regrowth -----------------------------------------------------------
