@@ -11,10 +11,19 @@ dimension-agnostic; `Camera` therefore requires a 2D world and says so loudly.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from core.vector import Vector
 
+if TYPE_CHECKING:  # type-only; keeps this pure-math module decoupled from the core
+    from core.world import WorldSnapshot
+
 RGB = tuple[int, int, int]
+
+# Smallest on-screen agent radius in pixels: bodies are never drawn (or clicked)
+# below this, so tiny agents stay visible and selectable. Shared by the drawing
+# code and the hit test so what you see is exactly what you can click.
+AGENT_MIN_RADIUS_PX = 2
 
 # Colour endpoints for the diet axis (kept here, a render concern, not in config).
 _HERBIVORE: RGB = (60, 200, 70)   # diet = 0: green
@@ -73,3 +82,32 @@ class Camera:
         """A body radius (world units) in pixels, never smaller than `minimum` so
         tiny agents stay visible (and, later, clickable)."""
         return max(minimum, round(world_radius * self.scale))
+
+
+def pick_agent(
+    snapshot: "WorldSnapshot",
+    world_pos: Vector,
+    camera: Camera,
+    *,
+    min_radius_px: int = AGENT_MIN_RADIUS_PX,
+) -> int | None:
+    """Return the id of the agent under `world_pos`, or None for empty space.
+
+    The clickable disc of each agent matches what is drawn: its body radius, but
+    floored to `min_radius_px` worth of world units so a tiny agent is as easy to
+    click as it is to see. When several discs overlap the point, the one whose
+    centre is nearest wins. A miss returns None, which the caller turns into a
+    deselect. Pure math (no pygame), so it is unit-tested headless.
+    """
+    floor_world = min_radius_px / camera.scale
+    best_id: int | None = None
+    best_d2 = float("inf")
+    for agent in snapshot.agents:
+        reach = agent.body_radius if agent.body_radius > floor_world else floor_world
+        dx = world_pos.x - agent.position.x
+        dy = world_pos.y - agent.position.y
+        d2 = dx * dx + dy * dy
+        if d2 <= reach * reach and d2 < best_d2:
+            best_d2 = d2
+            best_id = agent.id
+    return best_id
