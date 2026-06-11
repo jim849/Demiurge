@@ -21,6 +21,7 @@ _P = PhenotypeParams(
     body_radius_unit=10.0,
     base_rest=0.0,
     metab_cost_coeff=1.0,
+    metab_size_exponent=0.75,
     vision_cost_coeff=1.0,
     vision_half_angle_min=0.25,
     vision_half_angle_max=math.pi,
@@ -116,6 +117,19 @@ def test_bigger_and_higher_metabolism_drains_more_at_rest():
     lean = express(_genome(size=0.2, metabolism=0.2, vision_budget=0.1), _P)
     heavy = express(_genome(size=0.9, metabolism=0.9, vision_budget=0.1), _P)
     assert heavy.resting_cost > lean.resting_cost
+
+
+def test_resting_metabolism_has_economy_of_scale():
+    # Kleiber economy of scale (metab_size_exponent < 1): resting metabolism is
+    # concave in size, so equal size steps add DECREASING upkeep -- big bodies cost
+    # less per unit. Additive terms (base_rest, equal vision) cancel in the diffs.
+    low, mid, high = (
+        express(_genome(size=s, metabolism=0.8, vision_budget=0.3), _P)
+        for s in (0.2, 0.5, 0.8)
+    )
+    first_step = mid.resting_cost - low.resting_cost
+    second_step = high.resting_cost - mid.resting_cost
+    assert second_step < first_step  # concave: each extra unit of size costs less
 
 
 def test_larger_visual_budget_costs_resting_energy():

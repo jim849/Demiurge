@@ -47,6 +47,8 @@ class PhenotypeParams:
     # Metabolism
     base_rest: float             # baseline resting drain per tick
     metab_cost_coeff: float      # resting drain from metabolism gene, scaled by size
+    metab_size_exponent: float   # size scaling of resting metabolism; <1 = Kleiber
+                                 # economy of scale (big bodies cheaper per unit)
 
     # Vision (fixed-budget trade-off: spread wide OR reach far, only budget costs)
     vision_cost_coeff: float       # resting drain per unit visual budget (linear)
@@ -127,10 +129,13 @@ def express(genome: Genome, params: PhenotypeParams) -> Phenotype:
     perception_cos_half_angle = math.cos(half_angle)
 
     # Resting metabolism: bigger + higher-metabolism + larger visual budget drain
-    # more. Vision cost is linear in budget only (its SHAPE is free).
+    # more. Size scales sub-linearly (Kleiber economy of scale: metab_size_exponent
+    # < 1), so large bodies pay less upkeep PER unit -- this, against predation
+    # returns that grow with body area (~size**2), is what makes large carnivores
+    # pay off. Vision cost is linear in budget only (its SHAPE is free).
     resting_cost = (
         params.base_rest
-        + params.metab_cost_coeff * metabolism * size
+        + params.metab_cost_coeff * metabolism * (size ** params.metab_size_exponent)
         + params.vision_cost_coeff * vision_budget
     )
 

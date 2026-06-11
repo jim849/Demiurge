@@ -691,10 +691,10 @@ def test_carnivore_eats_adjacent_prey_and_gains_energy():
 
 def test_predation_requires_size_advantage():
     w = _hunter_world()
-    # hunter only marginally bigger: 0.5 is not > 1.2 * 0.45, so no kill
+    # hunter only marginally bigger: 0.5 is not > 1.1 * 0.48, so no kill
     hunter = w.spawn_agent(_genome(size=0.5, diet=1.0, vision_focus=0.0, vision_budget=1.0),
                            _ORIGIN, heading=Vector(1.0, 0.0), energy=100.0)
-    prey = w.spawn_agent(_genome(size=0.45, diet=0.0), _ORIGIN + Vector(4.0, 0.0), energy=80.0)
+    prey = w.spawn_agent(_genome(size=0.48, diet=0.0), _ORIGIN + Vector(4.0, 0.0), energy=80.0)
     rest = hunter.phenotype.resting_cost
     w.tick()
     assert prey.id in w.agents                              # survives: edge too small

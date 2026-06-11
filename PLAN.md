@@ -220,6 +220,47 @@ Completion criteria:
 **Still to do for M1:** `main.py` headless smoke run; rendering layer (pygame,
 iron laws 1–4) + click-to-inspect; creator console hooks.
 
+**Decision log — niche differentiation: carnivory cannot emerge gradually
+(2026-06).** A run of ~11 controlled tuning experiments (full table + seed morphs
+in `notes/ecology_experiments.md`) established three conclusions that reframe the
+"why does everything collapse to a tiny-herbivore monoculture" problem:
+
+1. **Carnivores cannot EMERGE by gradual mutation — there is a fitness valley.**
+   Proven with both a concave diet curve (`exp=0.75`, which gave a stable omnivore
+   monoculture, no carnivores) and a convex one (`exp=1.5`, which emptied the
+   mid-diet band via disruptive selection but sent *every* lineage to the herbivore
+   peak — the carnivore peak stayed empty, max diet ≤0.29 over 20000 ticks). The
+   intermediates (mid-diet, or carnivore-diet without large size) are less fit than
+   the herbivore peak, so gradient-following mutation never crosses to the carnivore
+   peak even though that peak exists.
+2. **A coherently-seeded carnivore IS viable and powerful.** `populate()` already
+   spreads diet 0..1, but genes are drawn independently, so a carnivore-diet
+   individual gets a random (usually too-small) size — no coherent predator morph
+   exists at t0. When a *designed* morph (diet≈0.9 + size≈0.9 + aggression≈0.9 +
+   long-range vision) is seeded via `spawn_agent`, it feasts and breeds explosively.
+   So the missing ingredient is gene **correlation at seeding**, not a broken
+   mechanic.
+3. **The real challenge is predator–prey BALANCE, a narrow bracketed band.**
+   Too-fast predator breeding ("eat one = breed one", a single kill exceeds the
+   repro threshold) → Lotka–Volterra overshoot → prey wiped out in ~15 ticks →
+   predators starve → extinction (t46–66). Too-slow breeding (carnivore
+   `repro_threshold`→192 energy) → predators starve out, herbivores thrive to 568.
+   Coexistence lives between these two — a tuning target, not an emergence problem.
+
+**Implication for direction:** rather than chase emergence-from-scratch (the only
+un-tried lever is resource-partitioning / gape-limitation, a larger structural
+change, deferred), use the **creator console to seed coherent morphs** and then
+tune the predator–prey balance band. This makes the M1 creator-console / data-hooks
+work the natural next phase.
+
+**Config rebalances kept from these experiments** (each defensible on its own merits
+even where it didn't by itself produce carnivores): `move_cost_coeff` 0.5→0.25;
+new `metab_size_exponent=0.75` (Kleiber economy of scale — big bodies cheaper per
+unit upkeep, so large predators can pay off against ∝size² predation returns);
+diet `herb_exp=carn_exp=1.5` (convex — the disruptive-selection prerequisite);
+`WORLD_SIZE` 1000→400 (+ `SPATIAL_CELL_SIZE` 100→50); predation `size_ratio`
+1.2→1.1 in both `BRAIN_PARAMS` and `PREDATION_PARAMS`.
+
 ---
 
 ### Milestone 2: Decision Module Swap

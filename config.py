@@ -74,13 +74,14 @@ GENOME_SCHEMA: tuple[ChromosomeSpec, ...] = (
 PHENOTYPE_PARAMS = PhenotypeParams(
     # Movement
     speed_unit=10.0,
-    move_cost_coeff=0.5,
+    move_cost_coeff=0.25,
     speed_cost_exponent=2.0,
     # Body: world-space radius at size=1 (contact = sum of radii; also the draw size)
     body_radius_unit=10.0,
     # Metabolism
     base_rest=0.1,
     metab_cost_coeff=0.5,
+    metab_size_exponent=0.75,     # Kleiber economy of scale: big bodies cheaper per unit
     # Vision (fixed-budget trade-off; see phenotype.express)
     vision_cost_coeff=0.3,        # resting drain per unit visual budget (linear)
     vision_half_angle_min=0.25,   # radians; narrowest cone half-angle (focus=1, ~28° FOV)
@@ -90,7 +91,12 @@ PHENOTYPE_PARAMS = PhenotypeParams(
     # Reproduction
     repro_min=50.0,
     repro_max=200.0,
-    # Diet: carnivory peak higher than herbivory; exponents >1 sharpen niches
+    # Diet: carnivory peak higher than herbivory. Exponents >1 make the niche
+    # curve convex -> a generalist (mid diet) is WORSE at both foods than a
+    # specialist, a fitness valley that drives DISRUPTIVE selection toward the two
+    # extremes (pure herbivore / pure carnivore) -- the structural prerequisite for
+    # herbivore/carnivore niche differentiation (only works if the carnivore
+    # extreme is independently viable, which density + a low predation gate provide).
     herb_max=1.0,
     carn_max=1.5,
     herb_exp=1.5,
@@ -102,7 +108,7 @@ PHENOTYPE_PARAMS = PhenotypeParams(
 # starting points, to be tuned by observation.
 BRAIN_PARAMS = BrainParams(
     carnivore_threat_threshold=0.5,  # diet >= this => a neighbour reads as a predator
-    predation_size_ratio=1.2,        # need > 1.2x the target's size to prey on it
+    predation_size_ratio=1.1,        # need > 1.1x the target's size to prey on it
     fear_flee_distance_unit=100.0,   # flee within (fear * 100) world units of a threat
     cruise_speed_fraction=0.5,       # foraging / wander travel speed (TEMP; see BrainParams)
 )
@@ -124,7 +130,7 @@ PLANT_PARAMS = PlantParams(
 # separate from the brain's belief (BRAIN_PARAMS.predation_size_ratio): the brain
 # proposes, the world disposes. In v1 size_ratio matches the brain's value.
 PREDATION_PARAMS = PredationParams(
-    size_ratio=1.2,         # predator size must exceed 1.2x the prey's size to kill
+    size_ratio=1.1,         # predator size must exceed 1.1x the prey's size to kill
     body_value_coeff=0.3,   # structural meal value = coeff * body_radius**2 (area~mass)
 )
 
@@ -140,16 +146,16 @@ OFFSPRING_PLACEMENT_FACTOR = 2.0
 # watch these dynamics). The world is a toroidal square; INITIAL_AGENT_ENERGY is
 # sized so a mid-genome agent survives long enough to find food but cannot breed
 # without eating (resting ~0.4/tick, repro threshold mid ~125; a plant is 30).
-WORLD_SIZE = Vector(1000.0, 1000.0)
+WORLD_SIZE = Vector(400.0, 400.0)
 INITIAL_AGENT_COUNT = 300
 INITIAL_AGENT_ENERGY = 80.0
 
 # --- perception performance --------------------------------------------------
 # Uniform-grid cell edge for neighbour queries. A PURE PERFORMANCE knob: it
 # changes how fast perception runs, never what an agent sees (the exact range +
-# field-of-view test is authoritative). At WORLD_SIZE 1000 this gives a 10x10
-# grid (~9 entities/cell); a typical agent then scans a 3x3 block.
-SPATIAL_CELL_SIZE = 100.0
+# field-of-view test is authoritative). At WORLD_SIZE 400 this gives a 8x8
+# grid; a typical agent then scans a few cells around itself.
+SPATIAL_CELL_SIZE = 50.0
 
 # --- reproducibility ---------------------------------------------------------
 DEFAULT_SEED = 20260609

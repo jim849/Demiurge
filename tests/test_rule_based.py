@@ -138,16 +138,20 @@ def test_no_eat_without_size_advantage_over_prey():
 
 
 def test_eat_probability_is_drawn_from_rng():
-    # An omnivore (diet=0.5) eats a plant with prob (1-0.5)^1.5 ~= 0.354.
+    # An omnivore (diet=0.5) eats a plant with prob plant_eat_prob = (1-0.5)^herb_exp.
+    # Derive the expectation from the phenotype (not a magic number) so this test
+    # stays valid as the niche-curve exponent is tuned; just assert the observed
+    # rate tracks it and is clearly neither never nor always.
     me = _phenotype(size=0.5, diet=0.5)
+    expected = me.plant_eat_prob * 400
     plant = PerceivedPlant(id=42, relative_position=Vector(1.0, 0.0), body_radius=3.0)
     eats = sum(
         1
         for s in range(400)
         if isinstance(_brain().decide(_perception(plants=[plant], phenotype=me), Rng(s)), EatAction)
     )
-    # Roughly a third; assert it is clearly neither never nor always.
-    assert 80 < eats < 240
+    assert 0 < eats < 400              # stochastic: not deterministic either way
+    assert 0.7 * expected < eats < 1.3 * expected  # rate tracks the configured prob
 
 
 # --- rung 3: hunt / forage ---------------------------------------------------
