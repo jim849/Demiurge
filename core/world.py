@@ -100,12 +100,20 @@ class PlantSnapshot:
 
 @dataclass(frozen=True, slots=True)
 class WorldSnapshot:
-    """An immutable readout of the whole world at one tick."""
+    """An immutable readout of the whole world at one tick.
+
+    `selected_id` carries the logic-layer selection (iron law 2: the core emits
+    selection state as pure data). `selected_genes` is the full gene map of that
+    one agent, or None when nothing is selected -- so the render layer can show a
+    chromosome read-out without ever touching a live Agent.
+    """
 
     tick: int
     size: Vector
     agents: tuple[AgentSnapshot, ...]
     plants: tuple[PlantSnapshot, ...]
+    selected_id: int | None = None
+    selected_genes: dict[str, float] | None = None
 
 
 # --- predation economy (world-authoritative) ----------------------------------
@@ -192,6 +200,7 @@ class World:
         "_reproducer",
         "_offspring_placement_factor",
         "_spatial_cell_size",
+        "selected_id",
     )
 
     def __init__(
@@ -240,6 +249,11 @@ class World:
         # result knob). Cell size only changes how the neighbour search is bucketed;
         # the exact range + field-of-view test still decides what is actually seen.
         self._spatial_cell_size = spatial_cell_size
+        # Selection state (iron law 4): "which agent is selected" is logic state,
+        # set by the render/input layer through select() with a plain id -- never a
+        # pygame object, so no click logic leaks into the core. The snapshot carries
+        # it out (iron law 2); it auto-clears when its target dies (see tick()).
+        self.selected_id: int | None = None
 
     # --- id allocation (World owns the counter, iron law 7) -------------------
 
@@ -558,6 +572,10 @@ class World:
 
         # Reap the dead.
         self.agents = {aid: a for aid, a in self.agents.items() if a.alive}
+        # A selection pointing at a now-dead agent is stale: clear it so the
+        # snapshot never references a ghost (iron law 4 -- selection is logic state).
+        if self.selected_id is not None and self.selected_id not in self.agents:
+            self.selected_id = None
 
         # Reproduce: survivors above their energy threshold split (after metabolism
         # and reaping, so only the living breed and newborns pay no upkeep this tick).
@@ -765,6 +783,19 @@ class World:
 
     # --- inspection -----------------------------------------------------------
 
+    def select(self, agent_id: int | None) -> None:
+        """Set (or, with None, clear) the selected agent (iron law 4).
+
+        The render/input layer calls this with a plain agent id it hit-tested from
+        a snapshot -- never a pygame object -- so selection stays logic state and no
+        click logic leaks into the core. An unknown id is rejected loudly rather than
+        silently stored, since the only legitimate source is an id the caller just
+        saw in a snapshot.
+        """
+        if agent_id is not None and agent_id not in self.agents:
+            raise KeyError(f"cannot select unknown agent id {agent_id}")
+        self.selected_id = agent_id
+
     def snapshot(self) -> WorldSnapshot:
         """Take an immutable, pure-data readout of the world for rendering."""
         agents = tuple(
@@ -785,8 +816,21 @@ class World:
             PlantSnapshot(id=p.id, position=p.position, body_radius=p.body_radius)
             for p in self.plants.values()
         )
+        # Carry the full gene map for the selected agent ONLY (the user chose
+        # selected-only over per-agent genomes): non-selected agents pay nothing,
+        # so this stays off the per-tick recorder hot path.
+        selected_genes: dict[str, float] | None = None
+        if self.selected_id is not None:
+            selected = self.agents.get(self.selected_id)
+            if selected is not None:
+                selected_genes = selected.genome.as_dict()
         return WorldSnapshot(
-            tick=self.tick_count, size=self.size, agents=agents, plants=plants
+            tick=self.tick_count,
+            size=self.size,
+            agents=agents,
+            plants=plants,
+            selected_id=self.selected_id,
+            selected_genes=selected_genes,
         )
 
     def __repr__(self) -> str:

@@ -192,6 +192,57 @@ def test_snapshot_is_immutable():
         snap.agents[0].energy = 999.0  # type: ignore[misc]
 
 
+# --- selection (iron law 4: selection is logic state, carried in the snapshot) -
+
+def test_default_selection_is_none():
+    w = _world()
+    w.populate(2, initial_energy=10.0)
+    assert w.selected_id is None
+    snap = w.snapshot()
+    assert snap.selected_id is None
+    assert snap.selected_genes is None
+
+
+def test_select_carries_id_and_full_genes_for_chosen_agent():
+    w = _world()
+    w.populate(3, initial_energy=10.0)
+    w.select(1)
+    snap = w.snapshot()
+    assert snap.selected_id == 1
+    assert snap.selected_genes == w.agents[1].genome.as_dict()
+    # only the selected agent's genes ride along, not the others'
+    assert snap.selected_genes != w.agents[0].genome.as_dict()
+
+
+def test_select_none_clears():
+    w = _world()
+    w.populate(2, initial_energy=10.0)
+    w.select(0)
+    assert w.snapshot().selected_id == 0
+    w.select(None)
+    snap = w.snapshot()
+    assert snap.selected_id is None
+    assert snap.selected_genes is None
+
+
+def test_select_unknown_id_raises():
+    w = _world()
+    w.populate(2, initial_energy=10.0)
+    with pytest.raises(KeyError):
+        w.select(999)
+
+
+def test_selection_auto_clears_when_selected_agent_dies():
+    w = _world()
+    w.populate(2, initial_energy=10.0)
+    w.select(0)
+    w.agents[0].mark_dead()  # it will be reaped on the next tick
+    w.tick()
+    assert 0 not in w.agents
+    assert w.selected_id is None
+    assert w.snapshot().selected_id is None
+
+
 # --- initial heading ----------------------------------------------------------
 
 def test_populate_assigns_unit_headings():
