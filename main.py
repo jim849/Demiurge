@@ -23,11 +23,19 @@ from core.decision.rule_based import RuleBasedBrain
 from core.genome import Genome
 from core.reproduction.asexual import AsexualReproduction
 from core.rng import Rng
-from core.world import World
+from core.vector import Vector
+from core.world import World, random_unit_vector
+from demiurge.interventions import Demiurge
 
 
-def build_world(seed: int) -> World:
-    """Assemble a World from config: brains, plants, predation, reproduction."""
+def build_world(seed: int, *, seed_plan: dict[str, int] | None = None) -> World:
+    """Assemble a World from config: brains, plants, predation, reproduction.
+
+    With `seed_plan` (morph name -> count), the world is filled with coherent,
+    hand-designed morphs (config.MORPHS) via the creator channel instead of a
+    random population -- a clean, known starting composition for predator-prey
+    balance experiments. Without it, the default random `populate` runs.
+    """
 
     def brain_factory(genome: Genome) -> RuleBasedBrain:
         return RuleBasedBrain.express(genome, config.BRAIN_PARAMS)
@@ -44,13 +52,37 @@ def build_world(seed: int) -> World:
         offspring_placement_factor=config.OFFSPRING_PLACEMENT_FACTOR,
         spatial_cell_size=config.SPATIAL_CELL_SIZE,
     )
-    world.populate(config.INITIAL_AGENT_COUNT, initial_energy=config.INITIAL_AGENT_ENERGY)
+    if seed_plan is None:
+        world.populate(config.INITIAL_AGENT_COUNT, initial_energy=config.INITIAL_AGENT_ENERGY)
+    else:
+        _seed_morphs(world, seed, seed_plan)
     world.scatter_plants(
         config.INITIAL_PLANT_COUNT,
         energy=config.PLANT_PARAMS.energy,
         body_radius=config.PLANT_PARAMS.body_radius,
     )
     return world
+
+
+def _seed_morphs(world: World, seed: int, seed_plan: dict[str, int]) -> None:
+    """Place `count` of each named morph at deterministic-random positions.
+
+    Experiment-harness glue (not core): the creator channel only knows how to make
+    one agent at an explicit position, so this loop owns the random placement +
+    facing. Its own seeded sub-stream keeps the layout reproducible and independent
+    of the world's internal draws.
+    """
+    demiurge = Demiurge(world, config.GENOME_SCHEMA)
+    place_rng = Rng(seed).spawn("seeding")
+    dim = world.size.dim
+    for morph_name, count in seed_plan.items():
+        genes = config.MORPHS[morph_name]
+        for _ in range(count):
+            position = Vector.from_iterable(place_rng.uniform(0.0, extent) for extent in world.size)
+            heading = random_unit_vector(dim, place_rng)
+            demiurge.create_agent(
+                genes, position, heading=heading, energy=config.INITIAL_AGENT_ENERGY
+            )
 
 
 def _stats_line(world: World) -> str:
@@ -73,9 +105,27 @@ def _stats_line(world: World) -> str:
     )
 
 
-def run(ticks: int, seed: int, every: int) -> None:
-    world = build_world(seed)
-    print(f"# Demiurge headless smoke run -- seed={seed}, ticks={ticks}")
+def _resolve_seed_plan(args: argparse.Namespace) -> dict[str, int] | None:
+    """Turn the seeding CLI flags into a plan, or None for random populate.
+
+    Seeding is on if `--seed-morph` is given OR any count override is. The plan
+    starts from config.SEED_PLAN and applies --herb/--carn overrides on top, so a
+    balance sweep can vary the ratio without editing config.
+    """
+    if not (args.seed_morph or args.herb is not None or args.carn is not None):
+        return None
+    plan = dict(config.SEED_PLAN)
+    if args.herb is not None:
+        plan["herb"] = args.herb
+    if args.carn is not None:
+        plan["carn"] = args.carn
+    return plan
+
+
+def run(ticks: int, seed: int, every: int, seed_plan: dict[str, int] | None = None) -> None:
+    world = build_world(seed, seed_plan=seed_plan)
+    composition = "random" if seed_plan is None else ", ".join(f"{n}x{m}" for m, n in seed_plan.items())
+    print(f"# Demiurge headless smoke run -- seed={seed}, ticks={ticks}, pop={composition}")
     print(_stats_line(world))  # tick 0: the starting world
     for _ in range(ticks):
         world.tick()
@@ -94,16 +144,22 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=config.DEFAULT_SEED, help="world seed")
     parser.add_argument("--every", type=int, default=50, help="print a stats line every N ticks (headless)")
     parser.add_argument("--render", action="store_true", help="open a pygame window instead of running headless")
+    parser.add_argument("--seed-morph", action="store_true",
+                        help="seed coherent morphs (config.SEED_PLAN) instead of a random population")
+    parser.add_argument("--herb", type=int, default=None, help="override herbivore seed count (implies --seed-morph)")
+    parser.add_argument("--carn", type=int, default=None, help="override carnivore seed count (implies --seed-morph)")
     args = parser.parse_args()
+
+    seed_plan = _resolve_seed_plan(args)
 
     if args.render:
         # Lazy import so the headless path stays free of any pygame dependency
         # (iron law 1): pygame is only touched when a window is actually requested.
         from render.view import run as run_render
 
-        run_render(build_world(args.seed))
+        run_render(build_world(args.seed, seed_plan=seed_plan))
     else:
-        run(ticks=args.ticks, seed=args.seed, every=args.every)
+        run(ticks=args.ticks, seed=args.seed, every=args.every, seed_plan=seed_plan)
 
 
 if __name__ == "__main__":

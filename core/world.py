@@ -52,11 +52,12 @@ from core.vector import Vector
 BrainFactory = Callable[[Genome], DecisionMaker]
 
 
-def _random_unit_vector(dim: int, rng: Rng) -> Vector:
+def random_unit_vector(dim: int, rng: Rng) -> Vector:
     """An isotropic random unit vector (Gaussian per component, then normalize).
 
-    Dimension-agnostic. (Mirrors the helper in `decision.rule_based`; kept local to
-    avoid the World depending on a concrete brain module.)
+    Dimension-agnostic. Public so the seeding harness (main.py) can give created
+    agents a random facing too. (Mirrors the helper in `decision.rule_based`, which
+    keeps its own copy to avoid depending on this module.)
     """
     v = Vector(*(rng.gauss(0.0, 1.0) for _ in range(dim)))
     if v.length_squared() == 0.0:
@@ -408,7 +409,7 @@ class World:
             )
             # A random unit facing so directional vision works from birth; its own
             # named sub-stream keeps positions stable regardless of this draw.
-            heading = _random_unit_vector(self.size.dim, gen_rng.spawn(f"heading/{i}"))
+            heading = random_unit_vector(self.size.dim, gen_rng.spawn(f"heading/{i}"))
             self.spawn_agent(
                 genome, position, heading=heading,
                 energy=initial_energy, generation=0,
@@ -676,9 +677,9 @@ class World:
 
             radius = self._offspring_placement_factor * parent.phenotype.body_radius
             distance = agent_rng.spawn("dist").uniform(0.0, radius)
-            offset = _random_unit_vector(self.size.dim, agent_rng.spawn("dir")) * distance
+            offset = random_unit_vector(self.size.dim, agent_rng.spawn("dir")) * distance
             child_position = self.wrap(parent.position + offset)
-            heading = _random_unit_vector(self.size.dim, agent_rng.spawn("heading"))
+            heading = random_unit_vector(self.size.dim, agent_rng.spawn("heading"))
 
             self.spawn_agent(
                 child_genome,

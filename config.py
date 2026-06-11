@@ -150,6 +150,34 @@ WORLD_SIZE = Vector(400.0, 400.0)
 INITIAL_AGENT_COUNT = 300
 INITIAL_AGENT_ENERGY = 80.0
 
+# --- creator seeding: coherent morphs ----------------------------------------
+# Named, hand-designed gene sets for the creator to SEED (demiurge.Demiurge), used
+# by `main.py --seed-morph`. These exist because tuning experiments showed
+# carnivory cannot EMERGE by gradual mutation (a fitness valley separates the
+# herbivore and carnivore peaks; see notes/ecology_experiments.md), but a
+# *coherently* gene-correlated predator IS viable -- so we seed whole morphs and
+# then study the predator-prey BALANCE rather than chasing emergence from scratch.
+# Each morph must list all 11 genes (Demiurge.create_agent allows no defaults).
+# These are starting points to sweep, NOT a claimed equilibrium.
+MORPHS: dict[str, dict[str, float]] = {
+    "herb": {
+        "size": 0.35, "speed": 0.3, "vision_budget": 0.4, "vision_focus": 0.5,
+        "diet": 0.1, "repro_threshold": 0.4, "metabolism": 0.4,
+        "offspring_investment": 0.4,
+        "aggression": 0.2, "fear": 0.7, "exploration": 0.4,
+    },
+    "carn": {
+        "size": 0.9, "speed": 0.7, "vision_budget": 0.8, "vision_focus": 0.35,
+        "diet": 0.9, "repro_threshold": 0.4, "metabolism": 0.4,
+        "offspring_investment": 0.4,
+        "aggression": 0.9, "fear": 0.1, "exploration": 0.6,
+    },
+}
+# Default seeding composition (morph -> count) when `--seed-morph` is given with no
+# --herb/--carn overrides. 270:30 mirrors the bracketing experiment and sums to the
+# random-populate headcount (300) for a fair comparison.
+SEED_PLAN: dict[str, int] = {"herb": 270, "carn": 30}
+
 # --- perception performance --------------------------------------------------
 # Uniform-grid cell edge for neighbour queries. A PURE PERFORMANCE knob: it
 # changes how fast perception runs, never what an agent sees (the exact range +
