@@ -201,13 +201,14 @@ Completion criteria:
 - Energy economy income wired: plants (discrete entities) + fixed-rate capped
   regrowth; herbivory resolve (fair conflict arbitration); predation resolve
   (size-gated, eat-before-move, meal = reserves + structural biomass). **This v1
-  economy is deliberately NON-conservative** — a chosen scaffold, not a bug:
-  carnivory is energy-dense (`carn_max` 1.5 > 1) and a slain body yields more than
-  its reserves, while a dead agent's leftover energy simply vanishes. Reason: in a
-  small world, strict conservation starves the carnivore niche before it can
-  emerge (energy-pyramid losses leave too little up the chain). The route back to
-  conservation is recorded as a backlog item ("Energy conservation & decomposer
-  loop").
+  economy is still NON-conservative**, but less so since the realism pass: digestion
+  efficiencies are now both ≤ 1 (`carn_max` 1.5 → 1.0, `herb_max` 1.0 → 0.8), so a
+  meal can no longer MULTIPLY energy (conservation step 1 done). The remaining
+  non-conservation is two named leaks: a slain body's structural-biomass term yields
+  more than the prey's reserves, and a dead agent's leftover energy vanishes.
+  Closing them (growth-as-an-energy-account + a decomposer loop) is a backlog item
+  ("Energy conservation & decomposer loop"); deferred because in a small world full
+  conservation can starve the carnivore niche before it stabilizes.
 - `core/reproduction/` (base + asexual copy+mutate) — swappable genetics module
   (iron law 5), injected into the World like the brain. The World owns the trigger
   (auto-split at `energy >= repro_threshold_energy`), the **energy-conserving**
@@ -494,9 +495,10 @@ aren't lost.
   energy created or leaked. The non-conservation today is concentrated in three
   named, bounded knobs, so reaching conservation is dialing them down + one
   structural addition (the decomposer), NOT an economy rewrite:
-  1. **Digestion efficiency ≤ 1.** Drop `carn_max` to ≤ 1 so a meal can only lose
-     energy in transfer, never multiply it (herbivory's `herb_max` = 1 is already
-     conservative). This removes the "carnivory amplifies energy" source.
+  1. **Digestion efficiency ≤ 1.** *(DONE)* `carn_max` 1.5 → 1.0 and `herb_max`
+     1.0 → 0.8 (both ≤ 1), so a meal can only lose energy in transfer, never
+     multiply it. This removed the "carnivory amplifies energy" source; the two
+     leaks below remain.
   2. **Growth as an energy account.** Building/maintaining a body must cost energy,
      so a body literally *stores* the energy that went into it. Then predation's
      structural meal term (`body_value_coeff · body_radius²`) stops being invented

@@ -91,14 +91,19 @@ PHENOTYPE_PARAMS = PhenotypeParams(
     # Reproduction
     repro_min=50.0,
     repro_max=200.0,
-    # Diet: carnivory peak higher than herbivory. Exponents >1 make the niche
-    # curve convex -> a generalist (mid diet) is WORSE at both foods than a
-    # specialist, a fitness valley that drives DISRUPTIVE selection toward the two
-    # extremes (pure herbivore / pure carnivore) -- the structural prerequisite for
-    # herbivore/carnivore niche differentiation (only works if the carnivore
+    # Diet: peak ASSIMILATION efficiencies (fraction of a food's energy the eater
+    # keeps). Both <= 1 -> conservative: a meal can only LOSE energy in transfer,
+    # never multiply it (this removes the old carn_max=1.5 "meat creates energy"
+    # source; see notes/ecology_experiments.md + the conservation backlog). carn_max
+    # stays above herb_max because digesting meat is more efficient than digesting
+    # plants -- so the carnivore peak is still the taller (more rewarding) extreme.
+    # Exponents >1 make the niche curve convex -> a generalist (mid diet) is WORSE
+    # at both foods than a specialist, a fitness valley that drives DISRUPTIVE
+    # selection toward the two extremes (pure herbivore / pure carnivore) -- the
+    # structural prerequisite for niche differentiation (only works if the carnivore
     # extreme is independently viable, which density + a low predation gate provide).
-    herb_max=1.0,
-    carn_max=1.5,
+    herb_max=0.8,
+    carn_max=1.0,
     herb_exp=1.5,
     carn_exp=1.5,
 )

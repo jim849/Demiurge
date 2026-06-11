@@ -123,7 +123,9 @@ class PredationParams:
       biomass `body_value_coeff * body_radius**2` (area ~ mass in 2D), so a large prey
       is a big meal even when starving ("a camel starved to death still outweighs a
       horse"). The whole meal is then scaled by the predator's carnivory efficiency
-      `prey_gain` -- which, with carn_max > 1, makes meat energy-dense by design.
+      `prey_gain` (carn_max <= 1, so assimilation never multiplies energy); the
+      structural-biomass term is the remaining non-conservation, to be closed later
+      by growth-as-an-energy-account + a decomposer loop (see the conservation backlog).
     """
 
     size_ratio: float
